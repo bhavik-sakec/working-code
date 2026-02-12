@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState, useRef, useMemo } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
-import { parseMrxFile } from '../lib/mrx-parser';
-import { convertMrxToAck, convertMrxToResp, convertMrxToCsv } from '../lib/converters';
+import { parseFileOnBackend, convertMrxToAckOnBackend, convertMrxToRespOnBackend, convertMrxToCsvOnBackend, ApiError, checkHealth } from '../lib/api';
 import { Button } from './ui/button';
 import {
     Upload,
@@ -16,10 +15,65 @@ import {
     Download,
     X,
     FileJson,
-    Loader2
+    Loader2,
+    Check,
+    AlertTriangle,
+    ShieldAlert,
+    Copy,
+    Settings,
+    ChevronLeft,
+    ChevronRight,
+    WifiOff
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GridView } from './visualizer/grid-view';
+
+const ErrorBanner = ({ error, onDismiss }: { error: string, onDismiss: () => void }) => {
+    const isConnectionError = error.toLowerCase().includes('connect') || error.toLowerCase().includes('engine') || error.toLowerCase().includes('server');
+
+    return (
+        <div className="relative mt-8 group animate-in fade-in slide-in-from-bottom-4 zoom-in-95 duration-500 flex justify-center w-full">
+            {/* Glow Effect */}
+            <div className="absolute -inset-1 bg-gradient-to-r from-rose-500/20 via-rose-500/40 to-rose-500/20 rounded-2xl blur-xl opacity-50 block group-hover:opacity-75 transition-opacity duration-500" />
+            
+            <div className="relative flex w-full max-w-md bg-background/80 backdrop-blur-xl border border-rose-500/30 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="w-1.5 bg-rose-500 shrink-0" />
+                <div className="p-5 flex items-start gap-4 flex-1">
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
+                        {isConnectionError ? (
+                            <WifiOff className="w-5 h-5 text-rose-500 animate-pulse" />
+                        ) : (
+                            <AlertTriangle className="w-5 h-5 text-rose-500" />
+                        )}
+                    </div>
+                    <div className="flex-1 space-y-1 text-left">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500">
+                                {isConnectionError ? 'Service Outage Detected' : 'Forge Processing Error'}
+                            </h4>
+                            <button 
+                                onClick={onDismiss}
+                                className="p-1 hover:bg-rose-500/10 rounded-md transition-colors text-zinc-500 hover:text-rose-500"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                        <p className="text-xs text-zinc-300 font-medium leading-relaxed pr-2">
+                            {error}
+                        </p>
+                        {isConnectionError && (
+                            <div className="pt-2 flex items-center gap-2">
+                                <div className="w-1 h-1 rounded-full bg-rose-500 animate-pulse" />
+                                <span className="text-[9px] text-rose-500/80 font-bold uppercase tracking-widest leading-none">Establishing safe reconnection...</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 export function MrxConverter() {
     const [content, setContent] = useState('');
@@ -27,42 +81,87 @@ export function MrxConverter() {
     const [isDragging, setIsDragging] = useState(false);
     const [fileName, setFileName] = useState<string | null>(null);
     const [mrxTimestamp, setMrxTimestamp] = useState<string>('');
+    const [originalFile, setOriginalFile] = useState<File | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    // Self-Healing Logic: Polling backend status when in error state
+    useEffect(() => {
+        if (!error || !error.toLowerCase().includes('connection')) return;
+
+        const interval = setInterval(async () => {
+            const isAlive = await checkHealth();
+            if (isAlive) {
+                setError(null);
+                clearInterval(interval);
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, [error]);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const result = useMemo(() => {
-        if (!content) return { lines: [], summary: { total: 0, valid: 0, invalid: 0, accepted: 0, rejected: 0 } };
-        return parseMrxFile(content);
-    }, [content]);
+    const [result, setResult] = useState<any>({ lines: [], summary: { total: 0, valid: 0, invalid: 0, accepted: 0, rejected: 0 } });
 
-    const processFile = (file: File) => {
+    const processFile = useCallback(async (file: File) => {
+        // Guard: prevent concurrent uploads
+        if (isLoading) return;
+
         setIsLoading(true);
+        setError(null);
         setFileName(file.name);
+        setOriginalFile(file);
 
         const tsMatch = file.name.match(/\d{14}/);
         setMrxTimestamp(tsMatch ? tsMatch[0] : format(new Date(), 'yyyyMMddHHmmss'));
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target?.result as string;
-            const firstLine = text.split('\n')[0] || '';
+        try {
+            // Send file to backend for parsing
+            const backendResponse = await parseFileOnBackend(file);
 
-            if (firstLine.length < 900) {
+            if (backendResponse.detectedSchema !== 'MRX') {
+                // Not an MRX file (or invalid)
+                setError('Invalid file format. Please upload an MRX (.txt) file.');
                 setIsLoading(false);
                 return;
             }
 
+            // Store backend result directly, normalizing 'valid' to 'isValid'
+            const parsedLines = backendResponse.lines.map((l: any) => ({
+                ...l,
+                isValid: l.isValid ?? l.valid,
+                fields: l.fields?.map((f: any) => ({
+                    ...f,
+                    isValid: f.isValid ?? f.valid
+                }))
+            }));
+
+            const parsedResult = {
+                lines: parsedLines,
+                summary: backendResponse.summary
+            };
+
             // Artificial delay for "processing" feel
             setTimeout(() => {
-                setContent(text);
+                setContent(backendResponse.rawContent);
+                setResult(parsedResult);
                 setIsLoading(false);
             }, 800);
-        };
-        reader.readAsText(file);
-    };
+        } catch (err: any) {
+            console.warn('[MRX Forge] API Error:', err.message);
+            setError(
+                (err instanceof ApiError && err.isNetworkError)
+                    ? err.message
+                    : `Processing failed: ${err.message || 'Unknown error'}`
+            );
+            setIsLoading(false);
+        }
+    }, [isLoading]);
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
+        if (isLoading) return;
         const file = e.dataTransfer.files[0];
         if (file) processFile(file);
     };
@@ -79,14 +178,28 @@ export function MrxConverter() {
         URL.revokeObjectURL(url);
     };
 
-    const handleAction = (type: 'ACK' | 'RESP' | 'CSV') => {
-        if (!content) return;
-        if (type === 'ACK') {
-            downloadString(convertMrxToAck(result, mrxTimestamp), `TEST.MCMSMN_CLAIMS_ACK_${mrxTimestamp}.txt`);
-        } else if (type === 'RESP') {
-            downloadString(convertMrxToResp(result, mrxTimestamp), `TEST.PRIME_BCBSMN_GEN_CLAIMS_RESP_${mrxTimestamp}.txt`);
-        } else {
-            downloadString(convertMrxToCsv(result), fileName?.replace('.txt', '.csv') || `MRX_EXPORT_${format(new Date(), 'yyyyMMddHHmmss')}.csv`);
+    const handleAction = async (type: 'ACK' | 'RESP' | 'CSV') => {
+        if (!content || !originalFile) return;
+        setError(null);
+
+        try {
+            if (type === 'ACK') {
+                const result = await convertMrxToAckOnBackend(originalFile, mrxTimestamp);
+                downloadString(result.content, result.fileName);
+            } else if (type === 'RESP') {
+                const result = await convertMrxToRespOnBackend(originalFile, mrxTimestamp);
+                downloadString(result.content, result.fileName);
+            } else {
+                const result = await convertMrxToCsvOnBackend(originalFile);
+                downloadString(result.content, result.fileName || fileName?.replace('.txt', '.csv') || `MRX_EXPORT_${format(new Date(), 'yyyyMMddHHmmss')}.csv`);
+            }
+        } catch (err: any) {
+            console.warn('[MRX Forge] Conversion error:', err.message);
+            setError(
+                (err instanceof ApiError && err.isNetworkError)
+                    ? err.message
+                    : `${type} generation failed: ${err.message || 'Unknown error'}`
+            );
         }
     };
 
@@ -103,7 +216,7 @@ export function MrxConverter() {
                     onDrop={handleDrop}
                 >
                     <div className="max-w-xl w-full flex flex-col items-center gap-10 text-center">
-                        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                        <div className={cn("relative group", isLoading ? "cursor-wait pointer-events-none" : "cursor-pointer")} onClick={() => !isLoading && fileInputRef.current?.click()}>
                             <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150 group-hover:bg-primary/30 transition-all" />
                             <div className="relative w-32 h-32 bg-muted/50 border-2 border-dashed border-border rounded-3xl flex items-center justify-center group-hover:border-primary group-hover:translate-y-[-4px] transition-all">
                                 {isLoading ? (
@@ -121,29 +234,37 @@ export function MrxConverter() {
                             </p>
                         </div>
 
-
+                        {/* Error Banner */}
+                        {error && (
+                            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+                        )}
                     </div>
                     <input
                         type="file"
                         ref={fileInputRef}
                         className="hidden"
                         accept=".txt"
-                        onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])}
+                        onChange={(e) => { if (!isLoading && e.target.files?.[0]) processFile(e.target.files[0]); }}
                     />
                 </div>
             ) : (
                 <div className="flex-1 flex flex-col min-h-0">
                     <header className="h-20 border-b border-border flex items-center justify-between px-8 bg-background shrink-0">
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-6 min-w-0">
                             <button
-                                onClick={() => setContent('')}
+                                onClick={() => {
+                                    setContent('');
+                                    setOriginalFile(null);
+                                    setFileName(null);
+                                    setResult({ lines: [], summary: { total: 0, valid: 0, invalid: 0, accepted: 0, rejected: 0 } });
+                                }}
                                 className="w-10 h-10 rounded-xl bg-muted/10 border border-border flex items-center justify-center hover:bg-rose-500/10 hover:border-rose-500/20 transition-all"
                             >
                                 <X className="w-4 h-4" />
                             </button>
-                            <div className="flex flex-col">
+                            <div className="flex flex-col min-w-0">
                                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Loaded Sequence</span>
-                                <span className="text-sm font-black">{fileName}</span>
+                                <span className="text-sm font-black truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[400px]" title={fileName ? `${mrxTimestamp.slice(0, 8)}${fileName}` : undefined}>{mrxTimestamp.slice(0, 8)}{fileName}</span>
                             </div>
                         </div>
 
@@ -161,6 +282,12 @@ export function MrxConverter() {
                             </Button>
                         </div>
                     </header>
+
+                    {error && (
+                        <div className="mx-8 mt-4 flex justify-center">
+                            <ErrorBanner error={error} onDismiss={() => setError(null)} />
+                        </div>
+                    )}
 
                     <div className="flex-1 min-h-0 bg-muted/20">
                         <div className="h-full w-full opacity-60 grayscale hover:grayscale-0 transition-all duration-700">

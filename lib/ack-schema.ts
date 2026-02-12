@@ -24,8 +24,8 @@ export const AckSchema: AckSchemaType = {
         { name: 'Sender Value', start: 2, end: 26, length: 25, type: 'AlphaNumeric', expectedValue: 'PRIME', description: "Value = 'PRIME'" },
         { name: 'Receiver Value', start: 27, end: 51, length: 25, type: 'AlphaNumeric', expectedValue: 'BCBSMN', description: 'Value = BCBSMN' },
         { name: 'Creation Date', start: 52, end: 59, length: 8, type: 'Numeric', description: 'YYYYMMDD', validation: (v) => /^\d{8}$/.test(v) ? null : 'Must be YYYYMMDD' },
-        { name: 'Original File Name', start: 60, end: 104, length: 45, type: 'AlphaNumeric', description: 'Original Filename' },
-        { name: 'Filler', start: 105, end: 220, length: 116, type: 'AlphaNumeric', description: 'Blank Fill' },
+        { name: 'Original File Name', start: 60, end: 106, length: 47, type: 'AlphaNumeric', description: 'Original Filename' },
+        { name: 'Filler', start: 107, end: 220, length: 114, type: 'AlphaNumeric', description: 'Blank Fill' },
     ],
     data: [
         { name: 'Record Type', start: 1, end: 1, length: 1, type: 'Alpha', expectedValue: 'D', description: 'Valid Value: D=Data' },

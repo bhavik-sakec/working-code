@@ -5,9 +5,9 @@ export const MrxSchema: AckSchemaType = {
     header: [
         { name: 'Record Type', start: 1, end: 1, length: 1, type: 'Alpha', expectedValue: 'H', description: 'Valid Value: H=Header' },
         { name: 'Sender Code', start: 2, end: 26, length: 25, type: 'AlphaNumeric', expectedValue: 'BCBSMN', description: 'Value = BCBSMN' },
-        { name: 'Run Date', start: 27, end: 34, length: 8, type: 'Numeric', description: 'CCYYMMDD' },
-        { name: 'Original File Name', start: 35, end: 79, length: 45, type: 'AlphaNumeric', description: 'BCBSMN_PRIME_CLAIMS_ccyymmddhhmmss.txt' },
-        { name: 'Filler', start: 80, end: 921, length: 842, type: 'AlphaNumeric', description: 'blank Fill' },
+        { name: 'Run Date', start: 27, end: 34, length: 8, type: 'Numeric', description: 'The date the extract was run (CCYYMMDD)' },
+        { name: 'Original File Name', start: 35, end: 81, length: 47, type: 'AlphaNumeric', description: 'Value: BCBSMN_PRIME_CLAIMS_ccyymmddhhmmss.txt' },
+        { name: 'Filler', start: 82, end: 921, length: 840, type: 'AlphaNumeric', description: 'blank Fill' },
     ],
     data: [
         { name: 'Record Type', start: 1, end: 1, length: 1, type: 'Alpha', expectedValue: 'D', description: 'Valid Value: D=Data' },
