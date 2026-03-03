@@ -12,9 +12,9 @@ interface StatBoxProps {
 }
 
 export const StatBox = ({ label, value, icon: Icon, colorClass, borderClass }: StatBoxProps) => (
-    <div className={cn("flex-1 flex flex-col justify-center px-6 border-r border-border min-w-[140px] transition-colors hover:bg-muted/30 group", borderClass)}>
+    <div className={cn("flex-1 flex flex-col justify-center px-4 border-r border-border min-w-[120px] transition-colors hover:bg-muted/30 group", borderClass)}>
         <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] tracking-widest uppercase text-muted-foreground font-mono group-hover:text-foreground transition-colors">{label}</span>
+            <span className="text-[11px] tracking-widest uppercase text-muted-foreground font-mono font-bold group-hover:text-foreground transition-colors">{label}</span>
             <Icon className={cn("w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity", colorClass)} />
         </div>
         <div className={cn("text-2xl font-mono font-bold tracking-tighter", colorClass)}>

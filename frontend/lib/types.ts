@@ -51,4 +51,5 @@ export interface ParseResult {
     };
     detectedSchema?: 'ACK' | 'RESP' | 'MRX' | 'INVALID';
     rawContent?: string;
+    validationErrors?: string[];
 }

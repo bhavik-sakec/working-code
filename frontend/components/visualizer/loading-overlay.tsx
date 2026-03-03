@@ -34,7 +34,7 @@ export function LoadingOverlay({
 
             <div className="w-64 space-y-4">
                 <div className="space-y-1.5">
-                    <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold">
+                    <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold">
                         <span className={activePhase === 'UPLOADING' ? "text-primary" : "text-muted-foreground"}>
                             {activePhase === 'UPLOADING' ? '>> INGESTING_STREAM' : 'INGEST_COMPLETE'}
                         </span>
@@ -49,7 +49,7 @@ export function LoadingOverlay({
                 </div>
 
                 <div className="space-y-1.5">
-                    <div className="flex justify-between text-[10px] uppercase tracking-widest font-bold">
+                    <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold">
                         <span className={activePhase === 'PROCESSING' ? "text-primary" : "text-muted-foreground"}>
                             {activePhase === 'PROCESSING' ? '>> PARSING_SCHEMA' : 'AWAITING_PROCESS'}
                         </span>
@@ -64,7 +64,7 @@ export function LoadingOverlay({
                 </div>
 
                 <div className="text-center pt-2">
-                    <div className="text-[10px] text-muted-foreground font-mono opacity-70 italic animate-pulse">
+                    <div className="text-[11px] text-muted-foreground font-mono opacity-80 italic animate-pulse">
                         {activePhase === 'UPLOADING' ? 'Streaming raw pulses to memory...' : 'Validating fixed-width alignment...'}
                     </div>
                 </div>

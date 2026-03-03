@@ -20,4 +20,5 @@ public class UnifiedParseResponse {
     private SummaryDTO summary;
     private String detectedSchema; // "ACK", "RESP", "MRX", "INVALID"
     private String rawContent; // full raw text content for frontend state
+    private List<String> validationErrors; // High-level file validation issues (e.g. trailer mismatch)
 }

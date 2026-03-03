@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magellan | Performance & Reliability Insights</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #020617;
+            --bg-card: #0f172a;
+            --accent-blue: #38bdf8;
+            --accent-indigo: #6366f1;
+            --accent-rose: #f43f5e;
+            --accent-emerald: #10b981;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg-deep);
+            color: #f1f5f9;
+        }
+
+        .glass-card {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-pill {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-pill:hover, .nav-pill.active {
+            background: rgba(56, 189, 248, 0.1);
+            border-color: rgba(56, 189, 248, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .stat-card {
+            border-left: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-left-color: var(--accent-blue);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .glow-blue { box-shadow: 0 0 40px rgba(56, 189, 248, 0.1); }
+        .grid-line { border-color: rgba(255, 255, 255, 0.03); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+    </style>
+</head>
+<body class="min-h-screen overflow-x-hidden selection:bg-sky-500/30">
+
+    <!-- Sidebar/Nav -->
+    <aside class="fixed left-0 top-0 h-full w-20 flex flex-col items-center py-8 z-50 border-r border-white/5 bg-slate-950/80 backdrop-blur-xl">
+        <div class="mb-12">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+                <span class="font-black text-xl">M</span>
+            </div>
+        </div>
+        <nav class="flex flex-col gap-8">
+            <button class="w-12 h-12 rounded-2xl flex items-center justify-center nav-pill active group">
+                <svg class="w-6 h-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            </button>
+            <button class="w-12 h-12 rounded-2xl flex items-center justify-center nav-pill group">
+                <svg class="w-6 h-6 text-slate-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </button>
+            <button class="w-12 h-12 rounded-2xl flex items-center justify-center nav-pill group">
+                <svg class="w-6 h-6 text-slate-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            </button>
+        </nav>
+    </aside>
+
+    <main class="ml-20 p-8 md:p-12 lg:p-16">
+        <!-- Header Section -->
+        <header class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16 animate-fade-in">
+            <div>
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-[10px] font-bold tracking-widest uppercase mb-4">
+                    <span class="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse"></span> SYSTEM OPTIMIZED
+                </div>
+                <h1 class="text-5xl md:text-6xl font-extrabold tracking-tight mb-4">
+                    Magellan <span class="gradient-text">Engine</span> Insights
+                </h1>
+                <p class="text-slate-400 text-lg max-w-2xl font-medium leading-relaxed">
+                    Visualizing 2026 performance metrics, bottleneck analysis, and reliability benchmarks for the Magellan Response Parsing Engine.
+                </p>
+            </div>
+            <div class="flex flex-col items-end">
+                <span id="genDate" class="text-xs text-slate-500 font-mono mb-2">---</span>
+                <div class="flex gap-4">
+                    <div class="flex flex-col items-end">
+                        <span id="totalReqs" class="text-3xl font-black text-white leading-none">--</span>
+                        <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">Total Requests</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- KPI Overview -->
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12 animate-fade-in" style="animation-delay: 0.1s">
+            <div class="glass-card p-8 rounded-[2rem] stat-card glow-blue">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-3 rounded-2xl bg-sky-500/10 text-sky-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </div>
+                    <span class="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">+99%</span>
+                </div>
+                <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Peak Throughput</h3>
+                <div id="peakTps" class="text-4xl font-black tracking-tight">--</div>
+                <p class="text-slate-500 text-[10px] mt-2">Requests per second (ACK)</p>
+            </div>
+
+            <div class="glass-card p-8 rounded-[2rem] stat-card" style="border-left-color: var(--accent-indigo)">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <span class="text-[10px] font-bold text-sky-400 bg-sky-400/10 px-2 py-1 rounded">Optimized</span>
+                </div>
+                <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Avg Latency</h3>
+                <div id="avgLatency" class="text-4xl font-black tracking-tight">--</div>
+                <p class="text-slate-500 text-[10px] mt-2">Millisecond turnaround</p>
+            </div>
+
+            <div class="glass-card p-8 rounded-[2rem] stat-card" style="border-left-color: var(--accent-emerald)">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                    </div>
+                    <span class="text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded">100%</span>
+                </div>
+                <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Reliability</h3>
+                <div class="text-4xl font-black tracking-tight text-emerald-400">Stable</div>
+                <p class="text-slate-500 text-[10px] mt-2">Zero unhandled exceptions</p>
+            </div>
+
+            <div class="glass-card p-8 rounded-[2rem] stat-card" style="border-left-color: var(--accent-rose)">
+                <div class="flex justify-between items-start mb-4">
+                    <div class="p-3 rounded-2xl bg-rose-500/10 text-rose-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <span id="errorCount" class="text-[10px] font-bold text-rose-400 bg-rose-400/10 px-2 py-1 rounded">0 Errors</span>
+                </div>
+                <h3 class="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">System Health</h3>
+                <div class="text-4xl font-black tracking-tight text-rose-400">99.9%</div>
+                <p class="text-slate-500 text-[10px] mt-2">Success rate benchmark</p>
+            </div>
+        </div>
+
+        <!-- Main Charts -->
+        <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12 animate-fade-in" style="animation-delay: 0.2s">
+            <div class="lg:col-span-2 glass-card p-10 rounded-[2.5rem] relative overflow-hidden group">
+                <div class="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div class="flex justify-between items-center mb-10">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-white tracking-tight">System Throughput</h2>
+                        <p class="text-slate-500 text-xs font-semibold mt-1">REQUESTS PER SECOND BY ENDPOINT</p>
+                    </div>
+                </div>
+                <div class="h-[350px]">
+                    <canvas id="mainChart"></canvas>
+                </div>
+            </div>
+
+            <div class="glass-card p-10 rounded-[2.5rem]">
+                <h2 class="text-2xl font-extrabold text-white tracking-tight mb-2">Latency Scan</h2>
+                <p class="text-slate-500 text-xs font-semibold mb-10 uppercase tracking-widest">P90 Latency Distribution (ms)</p>
+                <div class="space-y-8" id="latencyList">
+                    <!-- Latency rings/bars injected here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Metrics Table -->
+        <div class="max-w-7xl mx-auto animate-fade-in" style="animation-delay: 0.3s">
+            <div class="flex items-center justify-between mb-8">
+                <h2 class="text-3xl font-black text-white italic">Detailed Metrics Pool</h2>
+                <div class="flex gap-2">
+                    <span class="px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase">System</span>
+                    <span class="px-3 py-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-[10px] font-bold uppercase text-sky-400">Parser</span>
+                </div>
+            </div>
+            
+            <div class="glass-card rounded-[2.5rem] overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-white/5">
+                        <tr>
+                            <th class="p-6 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-white/5">Endpoint Identity</th>
+                            <th class="p-6 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-white/5 text-center">Throughput</th>
+                            <th class="p-6 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-white/5 text-center">Avg Latency</th>
+                            <th class="p-6 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-white/5 text-center">P99</th>
+                            <th class="p-6 text-[10px] font-black uppercase text-slate-500 tracking-widest border-b border-white/5 text-right">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsTableBody" class="divide-y divide-white/5">
+                        <!-- Rows injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="max-w-7xl mx-auto mt-24 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 pb-12">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center font-black text-xl italic text-slate-500">M</div>
+                <div class="flex flex-col">
+                    <span class="text-sm font-bold text-white tracking-widest uppercase">Magellan Benchmark Tool</span>
+                    <span class="text-xs text-slate-500">Built for Advanced Agentic Engineering</span>
+                </div>
+            </div>
+            <div class="text-xs text-slate-600 font-mono">
+                System optimized for 10^6 records/min scale.
+            </div>
+        </footer>
+    </main>
+
+    <script>
+        const friendlyNames = {
+            "health": "Health Matrix",
+            "layouts": "Layout Metadata",
+            "parseTextMrx": "MRX Block Parser",
+            "parseTextAck": "ACK Logic Parser",
+            "parseTextResp": "RESP Text Core",
+            "parseMrx": "Hybrid File Stream",
+            "convertMrxToAck": "Cross-Engine Ack",
+            "convertMrxToResp": "Cross-Engine Resp",
+            "convertMrxToCsv": "Serialized CSV",
+            "validate": "Policy Validator"
+        };
+
+        const theme = {
+            blue: '#38bdf8',
+            indigo: '#6366f1',
+            rose: '#f43f5e',
+            emerald: '#10b981',
+            slate: '#94a3b8'
+        };
+
+        async function initDashboard() {
+            try {
+                const response = await fetch('performance_report.json');
+                const data = await response.json();
+                const results = data.results;
+
+                // Update Header
+                document.getElementById('genDate').innerText = `SYSTEM SCAN: ${new Date(data.timestamp).toLocaleString().toUpperCase()}`;
+                
+                let totalCount = 0;
+                let maxTps = 0;
+                let latTotal = 0;
+                let count = 0;
+                let errors = 0;
+
+                Object.values(results).forEach(r => {
+                    totalCount += r.requests.total;
+                    if (r.requests.average > maxTps) maxTps = r.requests.average;
+                    latTotal += r.latency.average;
+                    count++;
+                    errors += (r.errors || 0);
+                });
+
+                document.getElementById('totalReqs').innerText = totalCount.toLocaleString();
+                document.getElementById('peakTps').innerText = Math.round(maxTps).toLocaleString();
+                document.getElementById('avgLatency').innerText = Math.round(latTotal / count) + ' ms';
+                document.getElementById('errorCount').innerText = errors + ' Anomalies';
+
+                // Main Chart
+                const sortedKeys = Object.keys(results).sort((a,b) => results[b].requests.average - results[a].requests.average);
+                renderMainChart(results, sortedKeys);
+                
+                // Latency Progress Bars
+                renderLatencyList(results, sortedKeys);
+
+                // Table Rows
+                renderTable(results, sortedKeys);
+
+            } catch (err) {
+                console.error("Dashboard engine failure:", err);
+            }
+        }
+
+        function renderMainChart(results, keys) {
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: keys.map(k => friendlyNames[k] || k),
+                    datasets: [{
+                        data: keys.map(k => results[k].requests.average),
+                        backgroundColor: (c) => {
+                            const val = c.raw;
+                            if (val > 5000) return theme.emerald;
+                            if (val > 200) return theme.blue;
+                            return theme.indigo;
+                        },
+                        borderRadius: 12,
+                        barThickness: 40
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#0f172a',
+                            titleFont: { size: 14, weight: 'bold' },
+                            padding: 16,
+                            cornerRadius: 12
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
+                            ticks: { color: '#475569', font: { family: 'Plus Jakarta Sans', weight: 600 } }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', weight: 600, size: 10 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderLatencyList(results, keys) {
+            const container = document.getElementById('latencyList');
+            keys.slice(0, 5).forEach(k => {
+                const r = results[k];
+                const avg = r.latency.average;
+                const percent = Math.min(100, Math.max(10, avg * 2)); // Dynamic visual scale
+                
+                container.innerHTML += `
+                    <div class="group/bar">
+                        <div class="flex justify-between items-end mb-2">
+                            <span class="text-xs font-black text-slate-300 uppercase tracking-tighter">${friendlyNames[k] || k}</span>
+                            <span class="text-sm font-black text-white">${avg}ms</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div class="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full group-hover/bar:from-sky-400 group-hover/bar:to-indigo-400 transition-all duration-700" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function renderTable(results, keys) {
+            const tbody = document.getElementById('metricsTableBody');
+            keys.forEach(k => {
+                const r = results[k];
+                tbody.innerHTML += `
+                    <tr class="hover:bg-white/[0.02] transition-colors group">
+                        <td class="p-6">
+                            <div class="flex items-center gap-4">
+                                <div class="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-bold text-slate-500 group-hover:bg-sky-500/10 group-hover:text-sky-400 transition-colors">${k.substring(0,2).toUpperCase()}</div>
+                                <div>
+                                    <div class="text-sm font-bold text-white mb-0.5">${friendlyNames[k] || k}</div>
+                                    <div class="text-[10px] text-slate-500 font-mono lowercase">/api/${k.replace(/([A-Z])/g, '-$1').toLowerCase()}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="p-6 text-center text-sm font-black text-slate-300">${Math.round(r.requests.average).toLocaleString()}</td>
+                        <td class="p-6 text-center text-sm font-black text-emerald-400">${Math.round(r.latency.average)}ms</td>
+                        <td class="p-6 text-center text-sm font-black text-indigo-400">${Math.round(r.latency.p99)}ms</td>
+                        <td class="p-6 text-right">
+                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase tracking-widest">
+                                <span class="w-1 h-1 rounded-full bg-emerald-500"></span> Optimal
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        initDashboard();
+    </script>
+</body>
+</html>

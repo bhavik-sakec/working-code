@@ -6,17 +6,18 @@
 
 import { ParsedLine } from './types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 // Endpoint Definitions from Environment Variables
 const ENDPOINTS = {
-    PARSE: process.env.NEXT_PUBLIC_API_PARSE || '/api/unified/parse',
-    PARSE_TEXT: process.env.NEXT_PUBLIC_API_PARSE_TEXT || '/api/unified/parse-text',
-    CONVERT_ACK: process.env.NEXT_PUBLIC_API_CONVERT_ACK || '/api/unified/mrx/convert/ack',
-    CONVERT_RESP: process.env.NEXT_PUBLIC_API_CONVERT_RESP || '/api/unified/mrx/convert/resp',
-    CONVERT_CSV: process.env.NEXT_PUBLIC_API_CONVERT_CSV || '/api/unified/mrx/convert/csv',
-    HEALTH: process.env.NEXT_PUBLIC_API_HEALTH || '/api/unified/health',
-    LAYOUTS: process.env.NEXT_PUBLIC_API_LAYOUTS || '/api/unified/layouts',
+    PARSE: process.env.NEXT_PUBLIC_API_PARSE,
+    PARSE_TEXT: process.env.NEXT_PUBLIC_API_PARSE_TEXT,
+    CONVERT_ACK: process.env.NEXT_PUBLIC_API_CONVERT_ACK,
+    CONVERT_RESP: process.env.NEXT_PUBLIC_API_CONVERT_RESP,
+    CONVERT_CSV: process.env.NEXT_PUBLIC_API_CONVERT_CSV,
+    HEALTH: process.env.NEXT_PUBLIC_API_HEALTH,
+    LAYOUTS: process.env.NEXT_PUBLIC_API_LAYOUTS,
+    VALIDATE: process.env.NEXT_PUBLIC_API_VALIDATE,
 };
 
 /**
@@ -46,7 +47,7 @@ async function safeFetch(url: string, options?: RequestInit): Promise<Response> 
     } catch {
         // Professional production-ready message
         throw new ApiError(
-            'Connection Error, Its not you its us😊',
+            'Connection Error',
             true
         );
     }
@@ -246,6 +247,76 @@ export async function fetchLayouts(): Promise<{
     if (!response.ok) {
         throw new ApiError(
             `Failed to fetch layouts (${response.status}): ${response.statusText}`,
+            false,
+            response.status
+        );
+    }
+
+    return response.json();
+}
+
+
+/**
+ * Validation response from the unified /validate endpoint.
+ */
+export interface ValidationResult {
+    isValid: boolean;
+    error: string | null;
+    allowedStatuses?: string[];
+    // STATUS_CHANGE response fields
+    suggestedStatus?: string;
+    suggestedApproved?: number;
+    suggestedDenied?: number;
+    // PARTIAL_UNITS response fields
+    wasCorrected?: boolean;
+    correctedApproved?: number;
+    correctedDenied?: number;
+}
+
+/**
+ * Validate if a claim status change is allowed.
+ * Calls the unified /validate endpoint with type STATUS_CHANGE.
+ */
+export async function validateStatusChange(
+    unitsApproved: number,
+    totalUnits: number,
+    newStatus: string
+): Promise<ValidationResult> {
+    const response = await safeFetch(`${API_BASE_URL}${ENDPOINTS.VALIDATE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'STATUS_CHANGE', unitsApproved, totalUnits, newStatus }),
+    });
+
+    if (!response.ok) {
+        throw new ApiError(
+            `Validation failed (${response.status}): ${response.statusText}`,
+            false,
+            response.status
+        );
+    }
+
+    return response.json();
+}
+
+/**
+ * Validate partial approval units.
+ * Calls the unified /validate endpoint with type PARTIAL_UNITS.
+ */
+export async function validatePartialUnits(
+    totalUnits: number,
+    newApproved: number,
+    newDenied: number
+): Promise<ValidationResult> {
+    const response = await safeFetch(`${API_BASE_URL}${ENDPOINTS.VALIDATE}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'PARTIAL_UNITS', totalUnits, newApproved, newDenied }),
+    });
+
+    if (!response.ok) {
+        throw new ApiError(
+            `Validation failed (${response.status}): ${response.statusText}`,
             false,
             response.status
         );

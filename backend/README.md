@@ -42,58 +42,59 @@ The server will start on `http://localhost:8080`
 
 ## 📡 API Endpoints
 
-### MRX File Parsing
+All endpoints are served at the base path `/api`. The system uses auto-detection to handle ACK, RESP, and MRX files automatically.
 
-**Upload MRX File:**
+### Parsing Operations
+
+**Upload and Parse File:**
 
 ```
-POST /api/mrx/parse
+POST /api/parse
 Content-Type: multipart/form-data
 Parameter: file (MultipartFile)
 ```
 
-**Parse MRX Text:**
+**Parse Raw Text:**
 
 ```
-POST /api/mrx/parse-text
+POST /api/parse-text
 Content-Type: text/plain
-Body: Raw MRX file content
+Body: Raw file content
 ```
 
-### ACK File Parsing
+### Conversion Operations (MRX Only)
 
-**Upload ACK File:**
+**Convert MRX to ACK:**
 
 ```
-POST /api/ack/parse
+POST /api/convert/mrx-to-ack
 Content-Type: multipart/form-data
 Parameter: file (MultipartFile)
 ```
 
-**Parse ACK Text:**
+**Convert MRX to RESP:**
 
 ```
-POST /api/ack/parse-text
-Content-Type: text/plain
-Body: Raw ACK file content
-```
-
-### RESP File Parsing
-
-**Upload RESP File:**
-
-```
-POST /api/resp/parse
+POST /api/convert/mrx-to-resp
 Content-Type: multipart/form-data
 Parameter: file (MultipartFile)
 ```
 
-**Parse RESP Text:**
+**Convert MRX to CSV:**
 
 ```
-POST /api/resp/parse-text
-Content-Type: text/plain
-Body: Raw RESP file content
+POST /api/convert/mrx-to-csv
+Content-Type: multipart/form-data
+Parameter: file (MultipartFile)
+```
+
+### Business Validation
+
+**Validate Claim Data:**
+
+```
+POST /api/validate
+Content-Type: application/json
 ```
 
 ## 📊 Response Format
@@ -137,28 +138,17 @@ All endpoints return JSON responses with the following structure:
 
 ```
 src/main/java/com/mrx/fileparserengine/
-├── controller/          # REST API controllers
-│   ├── MrxController.java
-│   ├── AckController.java
-│   └── RespController.java
+├── controller/          # Unified REST Controller
+│   └── UnifiedParserController.java
 ├── service/            # Business logic services
-│   ├── MrxParserService.java
-│   ├── AckParserService.java
-│   └── RespParserService.java
+│   ├── UnifiedParserService.java
+│   └── LayoutLoaderService.java
 ├── model/              # Data models
-│   ├── HeaderRecord.java
-│   ├── TrailerRecord.java
-│   ├── MrxDataRecord.java
-│   ├── AckDataRecord.java
-│   └── RespDataRecord.java
+│   └── FileLayout.java
 ├── dto/                # Data Transfer Objects
-│   ├── MrxFileResponse.java
-│   ├── AckFileResponse.java
-│   ├── RespFileResponse.java
-│   └── FileStatistics.java
+│   ├── UnifiedParseResponse.java
+│   └── ...
 └── util/               # Utility classes
-    ├── FixedWidthParser.java
-    └── DateUtil.java
 ```
 
 ## 🔧 Configuration
@@ -171,25 +161,18 @@ Edit `src/main/resources/application.properties` to customize:
 
 ## 🧪 Testing with cURL
 
-**Test MRX parsing:**
+**Test File Parsing:**
 
 ```bash
-curl -X POST http://localhost:8080/api/mrx/parse \
+curl -X POST http://localhost:8080/api/parse \
+  -F "file=@path/to/your-file.txt"
+```
+
+**Test Conversion (MRX to ACK):**
+
+```bash
+curl -X POST http://localhost:8080/api/convert/mrx-to-ack \
   -F "file=@path/to/mrx-file.txt"
-```
-
-**Test ACK parsing:**
-
-```bash
-curl -X POST http://localhost:8080/api/ack/parse \
-  -F "file=@path/to/ack-file.txt"
-```
-
-**Test RESP parsing:**
-
-```bash
-curl -X POST http://localhost:8080/api/resp/parse \
-  -F "file=@path/to/resp-file.txt"
 ```
 
 ## 📝 File Format Specifications
@@ -219,6 +202,19 @@ curl -X POST http://localhost:8080/api/resp/parse \
 This backend is designed to work seamlessly with the Next.js frontend in the parent directory. The CORS configuration allows requests from any origin during development.
 
 For production, update the `@CrossOrigin` annotation in controllers to specify allowed origins.
+
+## 🏷️ Naming Conventions
+
+### File Download Naming
+
+Whenever a file is generated for download (e.g., via the conversion endpoints), the backend suggests a naming convention. If you need to modify these patterns, refer to the following methods in `UnifiedParserService.java`:
+
+- **ACK Files**: Generated as `BCBSMN_PRIME_CLAIMS_{TIMESTAMP}.txt`. See `convertMrxToAck()`.
+- **RESP Files**: Naming is typically driven by the header record content or dynamic logic in the conversion methods. See `convertMrxToResp()`.
+- **CSV Exports**: While the CSV structure is generated in `convertMrxToCsv()`, the download filename is often managed by the frontend implementation.
+
+> [!TIP]
+> To change the default prefix or date format, search for hardcoded strings (like "BCBSMN") in the `UnifiedParserService` methods and update the `pad()` calls accordingly.
 
 ## 📄 License
 

@@ -31,7 +31,7 @@ export function Navbar({ activeTab, onTabChange }: NavbarProps) {
                                 : "text-muted-foreground hover:text-foreground"
                         )}
                     >
-                        Data Stream
+                        DATA MATRIX
                     </button>
                     <button
                         onClick={() => onTabChange('converter')}

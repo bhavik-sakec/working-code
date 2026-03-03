@@ -14,8 +14,10 @@ import {
     FileJson,
     Loader2,
     AlertTriangle,
-    WifiOff
+    WifiOff,
+    ExternalLink
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { ParseResult, ParsedLine, ParsedField } from '@/lib/types';
 import { cn } from '../lib/utils';
 import { GridView } from './visualizer/grid-view';
@@ -68,7 +70,11 @@ const ErrorBanner = ({ error, onDismiss }: { error: string, onDismiss: () => voi
 };
 
 
-export function MrxConverter() {
+export function MrxConverter({ pendingFile, onPendingFileConsumed, onOpenInDataMatrix }: {
+    pendingFile?: File | null,
+    onPendingFileConsumed?: () => void,
+    onOpenInDataMatrix?: (text: string, fileName: string) => void
+}) {
     const [content, setContent] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -154,11 +160,29 @@ export function MrxConverter() {
         }
     }, [isLoading]);
 
+    // Auto-process file passed from Data Matrix tab
+    useEffect(() => {
+        if (pendingFile && !isLoading) {
+            processFile(pendingFile);
+            onPendingFileConsumed?.();
+        }
+    }, [pendingFile]);
+
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
         if (isLoading) return;
-        const file = e.dataTransfer.files[0];
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 1) {
+            toast.warning('Multi-Stream Detected', {
+                description: 'The Forge supports only one MRX data stream at a time.',
+                duration: 4000,
+            });
+            return;
+        }
+
+        const file = files[0];
         if (file) processFile(file);
     };
 
@@ -193,6 +217,30 @@ export function MrxConverter() {
         } catch (err: unknown) {
             const message = err instanceof Error ? err.message : 'Unknown error';
             console.warn('[MRX Forge] Conversion error:', message);
+            setError(
+                (err instanceof ApiError && err.isNetworkError)
+                    ? err.message
+                    : `${type} generation failed: ${message}`
+            );
+        } finally {
+            setGeneratingType(null);
+        }
+    };
+
+    const handleOpenInMatrix = async (type: 'ACK' | 'RESP') => {
+        if (!content || !originalFile || generatingType) return;
+        setError(null);
+        setGeneratingType(type);
+
+        try {
+            const converter = type === 'ACK' ? convertMrxToAckOnBackend : convertMrxToRespOnBackend;
+            const result = await converter(originalFile, mrxTimestamp);
+            onOpenInDataMatrix?.(result.content, result.fileName);
+            toast.success(`${type} opened in Data Matrix`, {
+                description: `Converted ${fileName} → ${result.fileName}`,
+            });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
             setError(
                 (err instanceof ApiError && err.isNetworkError)
                     ? err.message
@@ -264,7 +312,7 @@ export function MrxConverter() {
                                 <X className="w-4 h-4" />
                             </button>
                             <div className="flex flex-col min-w-0">
-                                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Loaded Sequence</span>
+                                <span className="text-[11px] text-muted-foreground font-bold uppercase tracking-[0.2em] mb-1">Loaded Sequence</span>
                                 <span className="text-sm font-black truncate whitespace-nowrap overflow-hidden text-ellipsis max-w-[400px]" title={fileName ? `${mrxTimestamp.slice(0, 8)}${fileName}` : undefined}>{mrxTimestamp.slice(0, 8)}{fileName}</span>
                             </div>
                         </div>
@@ -272,7 +320,28 @@ export function MrxConverter() {
                         <div className="flex items-center gap-3">
                             <ForgeButton icon={FileJson} label="Generate ACK" onClick={() => handleAction('ACK')} isLoading={generatingType === 'ACK'} />
                             <ForgeButton icon={Zap} label="Generate RESP" color="indigo" onClick={() => handleAction('RESP')} isLoading={generatingType === 'RESP'} />
-                            <div className="w-px h-10 bg-border/40 mx-2" />
+                            <div className="w-px h-10 bg-border/40 mx-1" />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10 px-3 text-[9px] font-bold uppercase tracking-wider border-primary/30 hover:bg-primary/10 hover:border-primary/50 gap-1.5"
+                                onClick={() => handleOpenInMatrix('ACK')}
+                                disabled={!content || !!generatingType}
+                            >
+                                <ExternalLink className="w-3.5 h-3.5 text-primary" />
+                                ACK → Matrix
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-10 px-3 text-[9px] font-bold uppercase tracking-wider border-indigo-500/30 hover:bg-indigo-500/10 hover:border-indigo-500/50 gap-1.5"
+                                onClick={() => handleOpenInMatrix('RESP')}
+                                disabled={!content || !!generatingType}
+                            >
+                                <ExternalLink className="w-3.5 h-3.5 text-indigo-400" />
+                                RESP → Matrix
+                            </Button>
+                            <div className="w-px h-10 bg-border/40 mx-1" />
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -296,8 +365,8 @@ export function MrxConverter() {
                         </div>
                     )}
 
-                    <div className="flex-1 min-h-0 bg-muted/20">
-                        <div className="h-full w-full opacity-60 grayscale hover:grayscale-0 transition-all duration-700">
+                    <div className="flex-1 min-h-0">
+                        <div className="h-full w-full">
                             <GridView
                                 result={result}
                                 schema="MRX"
@@ -311,7 +380,7 @@ export function MrxConverter() {
 
                     <footer className="h-10 border-t border-border px-8 flex items-center justify-between bg-background/50">
                         <div className="flex items-center gap-4 text-[9px] uppercase tracking-widest text-muted-foreground">
-                            <span>Total Rows: {result.summary.total}</span>
+                            <span>Total Records: {result.lines.filter(l => l.type === 'Data').length}</span>
                             <span className="w-1 h-1 bg-border rounded-full" />
                             <span>Signature: {mrxTimestamp}</span>
                         </div>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magellan | Full API Performance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+        }
+        .glass {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+        .status-up { color: #10b981; }
+        .group-header {
+            border-left: 4px solid #38bdf8;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-4">
+            <div>
+                <h1 class="text-4xl font-bold gradient-text tracking-tight">API Performance Dashboard</h1>
+                <p class="text-slate-400 mt-2 flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Full System Benchmark - Magellan Response Backend
+                </p>
+            </div>
+            <div class="text-left md:text-right">
+                <div id="timestamp" class="text-xs text-slate-500 font-mono italic">Loading...</div>
+                <div id="total-reqs" class="text-xl font-bold text-sky-400 mt-1">-- Requests Total</div>
+            </div>
+        </header>
+
+        <!-- Summary Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+            <div class="glass p-6 rounded-3xl">
+                <h3 class="text-lg font-semibold mb-6 flex items-center justify-between">
+                    Throughput <span class="text-xs bg-white/10 px-2 py-1 rounded">Requests / Sec</span>
+                </h3>
+                <canvas id="throughputChart" height="200"></canvas>
+            </div>
+            <div class="glass p-6 rounded-3xl">
+                <h3 class="text-lg font-semibold mb-6 flex items-center justify-between">
+                    Latency Breakdown <span class="text-xs bg-white/10 px-2 py-1 rounded">Avg vs P99 (ms)</span>
+                </h3>
+                <canvas id="latencyChart" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Grouped Metrics -->
+        <div id="metrics-container" class="space-y-12">
+            <!-- Groups will be injected here: System, Parsing, Conversion, Validation -->
+        </div>
+
+        <!-- Footer -->
+        <footer class="mt-20 pt-8 border-t border-white/5 text-slate-500 text-sm flex justify-between">
+            <div>&copy; 2026 Magellan-Forge Performance Tools</div>
+            <div>Built for Advanced API Benchmarking</div>
+        </footer>
+    </div>
+
+    <script>
+        const groups = {
+            "System": ["health", "layouts"],
+            "Parsing": ["parseTextMrx", "parseTextAck", "parseTextResp", "parseMrx"],
+            "Conversion": ["convertMrxToAck", "convertMrxToResp", "convertMrxToCsv"],
+            "Validation": ["validate"]
+        };
+
+        const friendlyNames = {
+            "health": "Health Check",
+            "layouts": "Get Layouts",
+            "parseTextMrx": "Parse Text (MRX)",
+            "parseTextAck": "Parse Text (ACK)",
+            "parseTextResp": "Parse Text (RESP)",
+            "parseMrx": "Parse Multipart (MRX)",
+            "convertMrxToAck": "MRX -> ACK",
+            "convertMrxToResp": "MRX -> RESP",
+            "convertMrxToCsv": "MRX -> CSV",
+            "validate": "Claim Validation"
+        };
+
+        async function loadData() {
+            try {
+                const response = await fetch('performance_report.json');
+                const data = await response.json();
+                const results = data.results;
+
+                document.getElementById('timestamp').innerText = `REPORT GENERATED: ${new Date(data.timestamp).toLocaleString()}`;
+                
+                let totalCount = 0;
+                Object.values(results).forEach(r => totalCount += (r.requests.total || 0));
+                document.getElementById('total-reqs').innerText = `${totalCount.toLocaleString()} Requests Total`;
+
+                const container = document.getElementById('metrics-container');
+                
+                Object.keys(groups).forEach(groupName => {
+                    const sectionIds = groups[groupName];
+                    const groupHtml = `
+                        <section>
+                            <h2 class="text-2xl font-bold mb-6 group-header">${groupName}</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                ${sectionIds.map(id => {
+                                    const res = results[id];
+                                    if (!res) return '';
+                                    return `
+                                        <div class="glass p-6 rounded-3xl card-hover">
+                                            <div class="text-[10px] text-slate-500 uppercase font-mono mb-2 tracking-widest">${id}</div>
+                                            <h4 class="text-lg font-semibold text-sky-400 mb-4">${friendlyNames[id] || id}</h4>
+                                            <div class="space-y-3">
+                                                <div>
+                                                    <div class="text-2xl font-bold">${Math.round(res.requests.average || 0).toLocaleString()}</div>
+                                                    <div class="text-[10px] text-slate-500 uppercase">Avg Requests / Sec</div>
+                                                </div>
+                                                <div class="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <div class="text-emerald-400 font-bold">${Math.round(res.latency.average || 0)}ms</div>
+                                                        <div class="text-[10px] text-slate-500">Latency</div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="text-rose-400 font-bold">${res.errors || 0}</div>
+                                                        <div class="text-[10px] text-slate-500">Errors</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </section>
+                    `;
+                    container.innerHTML += groupHtml;
+                });
+
+                // Charts
+                const labels = Object.keys(results).map(id => friendlyNames[id] || id);
+                
+                new Chart(document.getElementById('throughputChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Requests Per Second',
+                            data: Object.values(results).map(r => r.requests.average),
+                            backgroundColor: '#38bdf8',
+                            borderRadius: 8
+                        }]
+                    },
+                    options: {
+                        plugins: { legend: { display: false } },
+                        scales: { 
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' }, border: { display: false } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+
+                new Chart(document.getElementById('latencyChart'), {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Average (ms)',
+                                data: Object.values(results).map(r => r.latency.average),
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            },
+                            {
+                                label: 'P99 (ms)',
+                                data: Object.values(results).map(r => r.latency.p99),
+                                borderColor: '#f43f5e',
+                                borderDash: [5, 5],
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        scales: { 
+                            y: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                            x: { grid: { display: false } }
+                        }
+                    }
+                });
+
+                // --- Reliability Injection ---
+                try {
+                    const relResp = await fetch('reliability_report.json');
+                    const relData = await relResp.json();
+                    
+                    let relHtml = `
+                        <section class="mt-16">
+                            <h2 class="text-2xl font-bold mb-6 group-header" style="border-left-color: #fb7185;">Reliability Suite (Negative Testing)</h2>
+                            <div class="glass rounded-3xl overflow-hidden">
+                                <table class="w-full text-left">
+                                    <thead class="bg-white/5 text-slate-400 text-[10px] uppercase tracking-widest">
+                                        <tr>
+                                            <th class="p-4">Invalid Test File</th>
+                                            <th class="p-4">Test Case</th>
+                                            <th class="p-4">Result</th>
+                                            <th class="p-4">Logic Breakdown</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-white/5">
+                                        ${relData.map(fileRes => 
+                                            fileRes.tests.map(test => `
+                                                <tr class="hover:bg-white/5 transition-colors">
+                                                    <td class="p-4 font-mono text-xs text-slate-400">${fileRes.fileName}</td>
+                                                    <td class="p-4 text-sm font-semibold">${test.name}</td>
+                                                    <td class="p-4">
+                                                        <span class="px-2 py-1 rounded text-[10px] font-bold ${test.wasCaughtAsInvalid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">
+                                                            ${test.wasCaughtAsInvalid ? 'PASSED (CAUGHT)' : 'FAILED (PASSED THROUGH)'}
+                                                        </span>
+                                                    </td>
+                                                    <td class="p-4 text-xs text-slate-500">
+                                                        ${test.detectedSchema ? `Schema: ${test.detectedSchema}` : ''} 
+                                                        ${test.invalidLines !== undefined ? `| Invalid Lines: ${test.invalidLines}` : ''}
+                                                        ${test.error ? `| Error: ${test.error}` : ''}
+                                                    </td>
+                                                </tr>
+                                            `).join('')
+                                        ).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    `;
+                    container.innerHTML += relHtml;
+                } catch(e) { console.log("Reliability data not found", e); }
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

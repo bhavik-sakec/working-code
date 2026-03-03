@@ -1,11 +1,10 @@
 'use client';
 
-import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
-import { cn } from '../../lib/utils';
+import React, { memo, useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../ui/select';
-import { RESP_DENIAL_CODES, ACK_DENIAL_CODES } from '../../lib/constants';
-import { Activity } from 'lucide-react';
+import { RESP_DENIAL_CODES, ACK_DENIAL_CODES } from '@/lib/constants';
 import { ParseResult, ParsedLine, FieldDefinition, ParsedField } from '@/lib/types';
 
 interface GridViewProps {
@@ -14,16 +13,62 @@ interface GridViewProps {
     virtuosoRef: React.RefObject<VirtuosoHandle | null>;
     editingField: { lineIdx: number, fieldIdx: number, value: string } | null;
     setEditingField: (f: { lineIdx: number, fieldIdx: number, value: string } | null) => void;
-    handleFieldUpdate: (lineIdx: number, fieldDef: FieldDefinition, newValue: string) => void;
+    handleFieldUpdate: (originalLineIdx: number, fieldDef: FieldDefinition, newValue: string) => void;
     isFieldEditable?: (name: string) => boolean;
     isDropdownField?: (name: string) => boolean;
 }
 
-const GridHeader = memo(() => <div className="h-4" />);
-GridHeader.displayName = 'GridHeader';
+// Column width overrides for specific fields
+const COLUMN_WIDTHS: Record<string, number> = {
+    'Record Type': 80,
+    'Patient ID': 120,
+    'Member ID': 120,
+    'Patient Name': 140,
+    'Reject ID': 130,
+    'Reject Reason': 380,
+    'Denial Code': 110,
+    'MRx Claim Line Number': 150,
+    'Claim Line Number': 120,
+};
+
+const MIN_COLUMN_WIDTH = 90;
+const CHAR_WIDTH = 8;
+const COLUMN_PADDING = 24;
+
+/** Calculate column width: use explicit override if available, otherwise derive from name length */
+function getColumnWidth(fieldName: string): number {
+    if (COLUMN_WIDTHS[fieldName]) return COLUMN_WIDTHS[fieldName];
+    return Math.max(MIN_COLUMN_WIDTH, fieldName.length * CHAR_WIDTH + COLUMN_PADDING);
+}
+
+const GridHeaderLine = memo(({ fields }: { fields: ParsedField[] }) => {
+    return (
+        <div className="flex bg-muted/80 backdrop-blur-sm border-b border-border sticky top-0 z-20 min-w-max h-10">
+            <div className="w-14 shrink-0 flex items-center justify-center px-4 border-r border-border/50">
+                <div className="text-[11px] font-bold text-muted-foreground">#</div>
+            </div>
+            <div className="flex px-1 items-center h-full">
+                {fields.map((field, idx) => (
+                    <div
+                        key={idx}
+                        className="flex items-center justify-center px-2 text-[11px] font-bold text-foreground truncate text-center"
+                        style={{
+                            width: `${getColumnWidth(field.def.name)}px`,
+                            minWidth: `${getColumnWidth(field.def.name)}px`
+                        }}
+                        title={field.def.name}
+                    >
+                        {field.def.name}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+});
+GridHeaderLine.displayName = 'GridHeaderLine';
 
 const GridScroller = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(function Scroller({ style, ...props }, ref) {
-    return <div {...props} ref={ref} style={{ ...style, overflow: 'auto' }} />;
+    return <div {...props} ref={ref} style={{ ...style, overflow: 'auto' }} className="bg-background scrollbar-thin scrollbar-thumb-muted-foreground/20" />;
 });
 
 const GridList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(function List({ style, children, ...props }, ref) {
@@ -32,7 +77,7 @@ const GridList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
             {...props}
             ref={ref}
             style={{ ...style, minWidth: 'max-content' }}
-            className="px-4 space-y-1 focus:outline-none"
+            className="focus:outline-none"
             tabIndex={0}
         >
             {children}
@@ -40,9 +85,9 @@ const GridList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
     );
 });
 
-// Memoized Row Component
 const GridRow = memo(({
     index,
+    originalIndex,
     line,
     schema,
     editingCol,
@@ -56,12 +101,13 @@ const GridRow = memo(({
     isSelected
 }: {
     index: number,
+    originalIndex: number,
     line: ParsedLine,
     schema: string,
     editingCol: number | null,
     editingValue: string | null,
     setEditingField: (f: { lineIdx: number, fieldIdx: number, value: string } | null) => void,
-    handleFieldUpdate: (lineIdx: number, fieldDef: FieldDefinition, newValue: string) => void,
+    handleFieldUpdate: (originalLineIdx: number, fieldDef: FieldDefinition, newValue: string) => void,
     isFieldEditable?: (name: string) => boolean,
     isDropdownField?: (name: string) => boolean,
     activeCol: number | null,
@@ -70,8 +116,6 @@ const GridRow = memo(({
 }) => {
     const activeCellRef = useRef<HTMLDivElement>(null);
 
-    // Follow active cell (especially for horizontal scrolling)
-    // PERFORMANCE: This effect now only runs for the active row
     useEffect(() => {
         if (activeCol !== null && activeCellRef.current) {
             activeCellRef.current.scrollIntoView({
@@ -82,124 +126,74 @@ const GridRow = memo(({
         }
     }, [activeCol]);
 
+    const isRejected = line.fields.some(f =>
+        (f.def.name === 'Status' && f.value.trim() === 'R') ||
+        (f.def.name === 'MRx Claim Status' && f.value.trim() === 'DY')
+    );
+
+    const isPartial = line.fields.some(f =>
+        f.def.name === 'MRx Claim Status' && f.value.trim() === 'PA'
+    );
+
     return (
         <div className={cn(
-            "flex items-start group min-h-0 transition-colors",
-            isSelected && "bg-primary/10"
+            "flex items-stretch transition-colors border-b border-border/40",
+            isSelected
+                ? "bg-primary/10"
+                : isRejected
+                    ? "bg-amber-400/15 hover:bg-amber-400/25 border-amber-400/30"
+                    : isPartial
+                        ? "bg-violet-400/15 hover:bg-violet-400/25 border-violet-400/30"
+                        : "hover:bg-muted/30"
         )}>
-            <div className="w-12 py-1.5 px-3 text-right text-[10px] text-muted-foreground/30 font-mono shrink-0 select-none border-r border-border/10 bg-muted/5 group-hover:text-foreground/50 transition-colors">
-                {line.lineNumber}
+            <div className="w-14 py-2 flex items-center justify-center px-4 text-[11px] text-muted-foreground font-medium border-r border-border/50 shrink-0 select-none">
+                {index + 1}
             </div>
 
-            <div className={cn(
-                "flex pl-2 py-1 transition-colors relative",
-                !line.isValid && "bg-rose-500/5"
-            )}>
-                {!line.isValid && (
-                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-rose-500" />
-                )}
+            <div className="flex px-1 py-1 gap-0 items-center">
+                {line.fields.map((field, idx) => {
+                    const isActive = activeCol === idx;
+                    const canEdit = field.def.editable || isFieldEditable?.(field.def.name);
+                    const isSelect = field.def.uiType === 'dropdown' || isDropdownField?.(field.def.name);
 
-                {line.type === 'Unknown' || !line.isValid ? (
-                    <div className="flex flex-col py-2 px-1 gap-2 w-full">
-                        <div className="flex items-center gap-2">
-                            <div className="text-[10px] text-rose-500 font-bold uppercase tracking-tighter">!! {line.type === 'Unknown' ? 'SYSTEM_UNCOORDINATED' : 'DATA_ALIGNMENT_FAILURE'}</div>
-                            {line.globalError && <span className="text-[9px] bg-rose-500/20 text-rose-400 px-1.5 py-0.5 font-mono">{line.globalError}</span>}
-                        </div>
-
-                        <div className="relative group/raw">
-                            <div className="text-xs text-rose-500/70 font-mono whitespace-pre opacity-90 break-all border-l-2 border-rose-500 pl-2 bg-rose-500/5 py-2 overflow-x-auto scroller-hide">
-                                {line.raw.slice(0, 220)}
-                                {line.raw.length > 220 && (
-                                    <span className="bg-rose-500 text-white font-bold animate-pulse">
-                                        {line.raw.slice(220)}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        {line.alignmentTips && (
-                            <div className="space-y-1">
-                                {line.alignmentTips.map((tip: string, i: number) => (
-                                    <div key={i} className="flex items-center gap-2 text-[10px] text-emerald-400/80 font-mono bg-emerald-500/5 px-2 py-1 rounded-sm border border-emerald-500/10">
-                                        <Activity className="w-3 h-3 shrink-0" />
-                                        <span>DIAGNOSIS: {tip}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    line.fields.map((field: ParsedField, idx: number) => {
-                        const isActive = activeCol === idx;
-                        return (
-                            <div
-                                key={idx}
-                                ref={isActive ? activeCellRef : null}
-                                onClick={() => setActiveCell({ row: index, col: idx })}
-                                className={cn(
-                                    "h-7 flex items-center justify-center px-1 text-[10px] border transition-all cursor-crosshair whitespace-nowrap relative",
-                                    line.type === 'Header' && "text-foreground",
-                                    line.type === 'Data' && "text-zinc-600 dark:text-zinc-400",
-                                    line.type === 'Trailer' && "text-purple-500",
-                                    !field.isValid && "text-rose-500 bg-rose-500/10 border-rose-500/20 font-bold",
-                                    isActive ? "border-primary ring-1 ring-primary z-10 bg-primary/5 shadow-[0_0_10px_rgba(var(--primary-rgb),0.2)]" : "border-transparent hover:border-border/30"
-                                )}
-                                style={{
-                                    width: `${Math.max(field.def.length * 12, 45)}px`,
-                                    minWidth: `${Math.max(field.def.length * 12, 45)}px`
-                                }}
-                            >
-                                { (field.def.editable || isFieldEditable?.(field.def.name)) ? (
-                                    (field.def.uiType === 'dropdown' || isDropdownField?.(field.def.name)) ? (
+                    return (
+                        <div
+                            key={idx}
+                            ref={isActive ? activeCellRef : null}
+                            onClick={() => setActiveCell({ row: index, col: idx })}
+                            className={cn(
+                                "px-0.5 flex items-center group/cell overflow-hidden",
+                                isActive && "z-10"
+                            )}
+                            style={{
+                                width: `${getColumnWidth(field.def.name)}px`,
+                                minWidth: `${getColumnWidth(field.def.name)}px`
+                            }}
+                        >
+                            <div className={cn(
+                                "w-full h-7 flex items-center justify-center px-1.5 rounded-md border transition-all duration-200 text-center",
+                                isActive
+                                    ? "bg-background border-primary/60 shadow-[inset_0_0_4px_rgba(var(--primary-rgb),0.1)]"
+                                    : "bg-transparent border-transparent hover:bg-muted/10 hover:border-muted-foreground/20",
+                                !field.isValid && "border-destructive/50 bg-destructive/5 text-destructive"
+                            )}>
+                                {canEdit ? (
+                                    isSelect ? (
                                         <Select
-                                            value={field.value.trim()}
-                                            onValueChange={(val) => {
-                                                handleFieldUpdate(index, field.def, val);
-                                                if (schema === 'ACK' && field.def.name === 'Status') {
-                                                    if (val === 'A') {
-                                                        const lineFields = line.fields;
-                                                        const rejectIdDef = lineFields.find((f: ParsedField) => f.def.name === 'Reject ID')?.def;
-                                                        const rejectReasonDef = lineFields.find((f: ParsedField) => f.def.name === 'Reject Reason')?.def;
-                                                        if (rejectIdDef) handleFieldUpdate(index, rejectIdDef, '');
-                                                        if (rejectReasonDef) handleFieldUpdate(index, rejectReasonDef, '');
-                                                    }
-                                                }
-                                                if (schema === 'ACK' && field.def.name === 'Reject ID') {
-                                                    const selected = ACK_DENIAL_CODES.find(c => c.code === val);
-                                                    if (selected) {
-                                                        const reasonDef = line.fields.find((f: ParsedField) => f.def.name === 'Reject Reason')?.def;
-                                                        if (reasonDef) handleFieldUpdate(index, reasonDef, selected.short);
-                                                    }
-                                                }
-                                                if (schema === 'RESP' && field.def.name === 'MRx Claim Status') {
-                                                    const lineFields = line.fields;
-                                                    const apprField = lineFields.find((f: ParsedField) => f.def.name === 'Units approved');
-                                                    const denyField = lineFields.find((f: ParsedField) => f.def.name === 'Units Denied');
-                                                    if (val === 'DY') {
-                                                        const currentAppr = apprField?.value.trim() || '0';
-                                                        if (apprField) handleFieldUpdate(index, apprField.def, '0');
-                                                        if (denyField) handleFieldUpdate(index, denyField.def, currentAppr === '0' ? '200' : currentAppr);
-                                                    } else if (val === 'PA') {
-                                                        let currentAppr = parseInt(apprField?.value.trim() || '200');
-                                                        if (currentAppr < 3) {
-                                                            currentAppr = 200;
-                                                            if (apprField) handleFieldUpdate(index, apprField.def, '200');
-                                                        }
-                                                        const partialDeny = Math.max(2, Math.floor(currentAppr / 2));
-                                                        if (denyField) handleFieldUpdate(index, denyField.def, partialDeny.toString());
-                                                    } else if (val === 'PD') {
-                                                        if (denyField) handleFieldUpdate(index, denyField.def, '0');
-                                                    }
-                                                }
-                                            }}
+                                            value={field.value.trim() || undefined}
+                                            onValueChange={(val) => handleFieldUpdate(originalIndex, field.def, val)}
                                         >
                                             <SelectTrigger 
-                                                className="w-full h-full border-0 bg-transparent p-0 text-center text-[10px] focus:ring-0 [&>svg]:hidden"
-                                                aria-label={`${field.def.name}, row ${line.lineNumber}, column ${idx + 1}`}
+                                                className="w-full h-full border-0 bg-transparent p-0 flex items-center justify-center focus:ring-0 focus-visible:ring-0 focus-visible:border-0 focus:outline-none focus-visible:outline-none shadow-none text-[11px] font-semibold text-foreground [&_svg:last-child]:w-3.5 [&_svg:last-child]:h-3.5"
                                             >
-                                                <div className="w-full text-center truncate">{field.value}</div>
+                                                <div className="truncate pr-1 text-center">{field.value.trim() || '—'}</div>
                                             </SelectTrigger>
-                                            <SelectContent position="popper" sideOffset={4} className="bg-popover border-border text-popover-foreground max-h-[300px] z-[9999]">
+                                            <SelectContent 
+                                                className="bg-popover border-border text-popover-foreground max-h-[300px] z-[9999]" 
+                                                position="popper" 
+                                                sideOffset={4}
+                                                align="start"
+                                            >
                                                 {field.def.name === 'Status' && schema === 'ACK' && (
                                                     <>
                                                         <SelectItem value="A">A (Accepted)</SelectItem>
@@ -216,14 +210,14 @@ const GridRow = memo(({
                                                 {field.def.name === 'Reject ID' && schema === 'ACK' && (
                                                     ACK_DENIAL_CODES.map(c => (
                                                         <SelectItem key={c.code} value={c.code} className="text-[10px]">
-                                                            {c.code}: {c.short.slice(0, 30)}...
+                                                            {c.code}: {c.short}
                                                         </SelectItem>
                                                     ))
                                                 )}
                                                 {field.def.name === 'Denial Code' && schema === 'RESP' && (
                                                     RESP_DENIAL_CODES.map(c => (
                                                         <SelectItem key={c.code} value={c.code} className="text-[10px]">
-                                                            {c.code}: {c.short.slice(0, 30)}...
+                                                            {c.code}: {c.short}
                                                         </SelectItem>
                                                     ))
                                                 )}
@@ -232,40 +226,32 @@ const GridRow = memo(({
                                     ) : (
                                         <input
                                             type="text"
-                                            value={editingCol === idx ? editingValue ?? '' : (field.def.name === 'Procedure Code' ? field.value.toUpperCase() : field.value)}
-                                            onChange={(e) => {
-                                                setEditingField({ lineIdx: index, fieldIdx: idx, value: e.target.value });
-                                            }}
+                                            value={editingCol === idx ? editingValue ?? '' : field.value}
+                                            onChange={(e) => setEditingField({ lineIdx: originalIndex, fieldIdx: idx, value: e.target.value })}
                                             onBlur={() => {
                                                 if (editingCol === idx) {
-                                                    handleFieldUpdate(index, field.def, editingValue ?? '');
+                                                    handleFieldUpdate(originalIndex, field.def, editingValue ?? '');
                                                     setEditingField(null);
                                                 }
                                             }}
-                                            onKeyDown={(e) => {
+                                            onFocus={() => setActiveCell({ row: index, col: idx })}
+                                            onKeyDown={(e) => { 
                                                 if (e.key === 'Enter') {
+                                                    e.preventDefault();
                                                     e.currentTarget.blur();
                                                 }
                                             }}
-                                            className="w-full h-full bg-transparent text-center focus:bg-primary/5 focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                            className="w-full h-full bg-transparent border-0 focus:outline-none text-foreground text-[11px] font-semibold text-center"
                                             spellCheck={false}
-                                            aria-label={`${field.def.name}, row ${line.lineNumber}, column ${idx + 1}`}
-                                            aria-describedby={`field-constraint-${index}-${idx}`}
-                                            role="textbox"
-                                            aria-invalid={!field.isValid}
                                         />
                                     )
                                 ) : (
-                                    field.def.name === 'Procedure Code' ? field.value.toUpperCase() : field.value
+                                    <div className="truncate text-muted-foreground font-medium text-[11px] text-center w-full" title={field.value.trim()}>{field.value}</div>
                                 )}
-                                {/* Screen reader only: field constraints */}
-                                <span id={`field-constraint-${index}-${idx}`} className="sr-only">
-                                    Maximum {field.def.length} characters
-                                </span>
                             </div>
-                        );
-                    })
-                )}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -282,13 +268,24 @@ export function GridView({
     isFieldEditable,
     isDropdownField
 }: GridViewProps) {
-    const [activeCell, setActiveCell] = useState<{ row: number, col: number } | null>(() => {
-        return result.lines.length > 0 ? { row: 0, col: 0 } : null;
+    // Map dataRows to include originalIndex for correct state updates
+    const dataRows = useMemo(() => result.lines
+        .map((line, originalIndex) => ({ line, originalIndex }))
+        .filter(item => item.line.type === 'Data'), [result.lines]);
+
+
+    const [activeCell, setActiveCellState] = useState<{ row: number, col: number } | null>(() => {
+        return dataRows.length > 0 ? { row: 0, col: 0 } : null;
     });
-    // Selected rows state
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
 
-    // Auto-scroll when active row changes
+    const setActiveCell = useCallback((cell: { row: number, col: number }) => {
+        setActiveCellState(cell);
+    }, []);
+
+    const firstDataLine = dataRows[0]?.line || result.lines.find(l => l.type === 'Data');
+    const headerFields = firstDataLine?.fields || [];
+
     useEffect(() => {
         if (activeCell && virtuosoRef.current) {
             virtuosoRef.current.scrollIntoView({
@@ -300,31 +297,12 @@ export function GridView({
     }, [activeCell, virtuosoRef]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        // Don't intercept global keys if editing a field (unless it's basic navigation we want to allow, but usually safer to block)
         if (editingField) return;
-
-        if (!activeCell) {
-            if (result.lines.length > 0) setActiveCell({ row: 0, col: 0 });
-            return;
-        }
+        if (!activeCell) return;
 
         const { row, col } = activeCell;
-        const line = result.lines[row];
-        if (!line) return;
-
-        if (e.shiftKey && e.code === 'Space') {
-            e.preventDefault();
-            setSelectedRows(prev => {
-                const next = new Set(prev);
-                if (next.has(row)) {
-                    next.delete(row);
-                } else {
-                    next.add(row);
-                }
-                return next;
-            });
-            return;
-        }
+        const item = dataRows[row];
+        if (!item) return;
 
         switch (e.key) {
             case 'ArrowUp':
@@ -333,7 +311,7 @@ export function GridView({
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                if (row < result.lines.length - 1) setActiveCell({ row: row + 1, col });
+                if (row < dataRows.length - 1) setActiveCell({ row: row + 1, col });
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
@@ -341,70 +319,60 @@ export function GridView({
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (col < line.fields.length - 1) setActiveCell({ row, col: col + 1 });
+                if (col < item.line.fields.length - 1) setActiveCell({ row, col: col + 1 });
                 break;
             case 'Enter':
-                if (!editingField) {
-                    const field = line.fields[col];
-                    if (field && (field.def.editable || isFieldEditable?.(field.def.name))) {
-                        e.preventDefault();
-                        setEditingField({ lineIdx: row, fieldIdx: col, value: field.value });
-                    }
+                const field = item.line.fields[col];
+                if (field && (field.def.editable || isFieldEditable?.(field.def.name))) {
+                    e.preventDefault();
+                    setEditingField({ lineIdx: item.originalIndex, fieldIdx: col, value: field.value });
                 }
                 break;
             case 'Escape':
                 setSelectedRows(new Set());
                 break;
         }
-    }, [activeCell, result.lines, editingField, isFieldEditable, setEditingField]);
-
-    // Focus treatment
-    const containerRef = useRef<HTMLDivElement>(null);
+    }, [activeCell, dataRows, editingField, isFieldEditable, setEditingField]);
 
     return (
         <div 
-            ref={containerRef}
-            className="flex-1 relative h-full w-full focus:outline-none focus:ring-1 focus:ring-primary/20 focus:ring-inset group/grid"
+            className="flex-1 relative h-full w-full focus:outline-none bg-background"
             onKeyDown={handleKeyDown}
             tabIndex={0}
-            aria-label="Data Grid"
         >
             <div className="absolute inset-0">
                 <Virtuoso
                     ref={virtuosoRef}
                     style={{ height: '100%' }}
-                    totalCount={result.lines.length}
+                    totalCount={dataRows.length}
                     overscan={20}
-                    increaseViewportBy={300}
+                    increaseViewportBy={500}
                     components={{
-                        Header: GridHeader,
+                        Header: () => <GridHeaderLine fields={headerFields} />,
                         Scroller: GridScroller,
                         List: GridList
                     }}
-                    itemContent={(index: number) => (
-                        <GridRow
-                            index={index}
-                            line={result.lines[index]}
-                            schema={schema}
-                            editingCol={editingField?.lineIdx === index ? editingField.fieldIdx : null}
-                            editingValue={editingField?.lineIdx === index ? editingField.value : null}
-                            setEditingField={setEditingField}
-                            handleFieldUpdate={handleFieldUpdate}
-                            isFieldEditable={isFieldEditable}
-                            isDropdownField={isDropdownField}
-                            activeCol={activeCell?.row === index ? activeCell.col : null}
-                            setActiveCell={setActiveCell}
-                            isSelected={selectedRows.has(index)}
-                        />
-                    )}
+                    itemContent={(index) => {
+                        const item = dataRows[index];
+                        return (
+                            <GridRow
+                                index={index}
+                                originalIndex={item.originalIndex}
+                                line={item.line}
+                                schema={schema}
+                                editingCol={editingField?.lineIdx === item.originalIndex ? editingField.fieldIdx : null}
+                                editingValue={editingField?.lineIdx === item.originalIndex ? editingField.value : null}
+                                setEditingField={setEditingField}
+                                handleFieldUpdate={handleFieldUpdate}
+                                isFieldEditable={isFieldEditable}
+                                isDropdownField={isDropdownField}
+                                activeCol={activeCell?.row === index ? activeCell.col : null}
+                                setActiveCell={setActiveCell}
+                                isSelected={selectedRows.has(index)}
+                            />
+                        );
+                    }}
                 />
-            </div>
-
-            {/* Subtle Keyboard Hint */}
-            <div className="absolute bottom-4 right-6 pointer-events-none opacity-0 group-focus/grid:opacity-100 transition-opacity flex items-center gap-2 bg-background/50 backdrop-blur-sm border border-border px-2 py-1 rounded text-[9px] text-muted-foreground font-mono uppercase tracking-tighter z-50">
-                <span className="bg-muted px-1 rounded border border-border/50 text-foreground">Arrows</span> Navigate
-                <span className="bg-muted px-1 rounded border border-border/50 text-foreground ml-2">Enter</span> Edit
-                <span className="bg-muted px-1 rounded border border-border/50 text-foreground ml-2">Shift+Space</span> Select
             </div>
         </div>
     );

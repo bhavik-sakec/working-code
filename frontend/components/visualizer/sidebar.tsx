@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { FileText, Upload, AlertTriangle, Check, ChevronLeft, ChevronRight, X, Activity } from 'lucide-react';
+import { FileText, Upload, AlertTriangle, Check, ChevronLeft, ChevronRight, X, Activity, ShieldAlert } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ParseResult, ParsedLine, ParsedField } from '@/lib/types';
 import { VirtuosoHandle } from 'react-virtuoso';
@@ -45,16 +45,13 @@ export function VisualizerSidebar({
         <aside
             className={cn(
                 "relative border-r border-border flex flex-col bg-muted/5 z-20 shrink-0 transition-all duration-300 ease-in-out",
-                isSidebarOpen ? "w-80" : "w-0 border-r-0"
+                isSidebarOpen ? "w-80" : "w-4 border-r-0"
             )}
         >
             {/* Prominent Vertical Toggle Handle */}
             <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className={cn(
-                    "absolute top-1/2 -translate-y-1/2 z-50 group flex items-center justify-center w-8 h-32 outline-none transition-all",
-                    isSidebarOpen ? "-right-4" : "left-0"
-                )}
+                className="absolute top-1/2 -translate-y-1/2 -right-4 z-50 group flex items-center justify-center w-8 h-32 outline-none transition-all"
                 title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
             >
                 <div className="h-full w-[2px] bg-border group-hover:bg-primary transition-colors flex items-center justify-center relative">
@@ -72,7 +69,7 @@ export function VisualizerSidebar({
                     <div className="p-4 border-b border-border space-y-4 pt-6">
                         {/* PROTOCOL SWITCH TOGGLE */}
                         <div className="space-y-2">
-                            <label className="text-[10px] uppercase tracking-widest text-muted-foreground block">Protocol Engine</label>
+                            <label className="text-[11px] uppercase tracking-widest text-muted-foreground block font-bold">Protocol Engine</label>
                             <div className="grid grid-cols-2 p-1 bg-muted/30 border border-border rounded-lg relative overflow-hidden h-10">
                                 <div
                                     className={cn(
@@ -83,7 +80,7 @@ export function VisualizerSidebar({
                                 <button
                                     onClick={() => setSchema('ACK')}
                                     className={cn(
-                                        "relative z-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors",
+                                        "relative z-10 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors",
                                         schema === 'ACK' ? "text-primary" : "text-muted-foreground hover:text-foreground"
                                     )}
                                 >
@@ -92,7 +89,7 @@ export function VisualizerSidebar({
                                 <button
                                     onClick={() => setSchema('RESP')}
                                     className={cn(
-                                        "relative z-10 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors",
+                                        "relative z-10 text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-colors",
                                         schema === 'RESP' ? "text-primary" : "text-muted-foreground hover:text-foreground"
                                     )}
                                 >
@@ -155,7 +152,20 @@ export function VisualizerSidebar({
                         </div>
                         <ScrollArea className="flex-1">
                             <div className="p-0">
-                                {result.lines.filter((l: ParsedLine) => !l.isValid).length === 0 ? (
+                                {result.validationErrors && result.validationErrors.length > 0 && (
+                                    <div className="p-3 bg-red-500/10 border-b border-red-500/20">
+                                        <div className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                            <ShieldAlert className="w-3 h-3" /> Critical File Error
+                                        </div>
+                                        {result.validationErrors.map((err, i) => (
+                                            <div key={i} className="text-[10px] font-bold text-red-400 leading-tight mb-1 last:mb-0">
+                                                • {err}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {result.lines.filter((l: ParsedLine) => !l.isValid).length === 0 && (!result.validationErrors || result.validationErrors.length === 0) ? (
                                     <div className="p-8 text-center text-muted-foreground opacity-50 flex flex-col items-center gap-2">
                                         <Check className="w-6 h-6" />
                                         <span className="text-[10px]">NO ANOMALIES DETECTED</span>

@@ -1,0 +1,43 @@
+[
+  {
+    "fileName": "ACK_GEN_1772204310965.txt",
+    "tests": [
+      {
+        "name": "Multipart Parse",
+        "status": 200,
+        "detectedSchema": "ACK",
+        "invalidLines": 1,
+        "wasCaughtAsInvalid": true
+      }
+    ]
+  },
+  {
+    "fileName": "MRX_TEST.BCBSMN_PRIME_CLAIMS_1772204821542.txt",
+    "tests": [
+      {
+        "name": "Multipart Parse",
+        "status": 200,
+        "detectedSchema": "MRX",
+        "invalidLines": 1,
+        "wasCaughtAsInvalid": true
+      },
+      {
+        "name": "MRX to ACK Conversion",
+        "status": 200,
+        "wasCaughtAsInvalid": false
+      }
+    ]
+  },
+  {
+    "fileName": "TEST.PRIME.BCBSMN_GEN_CLAIM_RESP_20260227203404.TXT",
+    "tests": [
+      {
+        "name": "Multipart Parse",
+        "status": 200,
+        "detectedSchema": "RESP",
+        "invalidLines": 1,
+        "wasCaughtAsInvalid": true
+      }
+    ]
+  }
+]

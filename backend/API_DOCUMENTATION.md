@@ -6,13 +6,52 @@
 http://localhost:8080
 ```
 
-## Endpoints
+## Endpoints (8 Total)
 
-### 1. Parse MRX File (Upload)
+All endpoints are served by the **UnifiedParserController** at `/api`.
 
-**Endpoint:** `POST /api/mrx/parse`
+---
 
-**Description:** Upload and parse an MRX file
+### 1. Health Check
+
+**Endpoint:** `GET /api/health`
+
+**Description:** Verify backend is running and responsive.
+
+**Response:** `200 OK`
+
+---
+
+### 2. Get Layouts
+
+**Endpoint:** `GET /api/layouts`
+
+**Description:** Returns YAML layout configurations for ACK, RESP, and MRX file types. Used by the frontend to render the data grid dynamically.
+
+**Response:**
+
+```json
+{
+  "ACK": {
+    "name": "ACK",
+    "lineLength": 220,
+    "header": [...],
+    "data": [...],
+    "trailer": [...],
+    "denialCodes": [...]
+  },
+  "RESP": { ... },
+  "MRX": { ... }
+}
+```
+
+---
+
+### 3. Parse File (Upload)
+
+**Endpoint:** `POST /api/parse`
+
+**Description:** Upload and auto-detect file type (ACK, RESP, MRX), then parse it. Returns ParseResult-compatible JSON for the frontend.
 
 **Request:**
 
@@ -23,74 +62,85 @@ http://localhost:8080
 **Example (cURL):**
 
 ```bash
-curl -X POST http://localhost:8080/api/mrx/parse \
-  -F "file=@mrx-sample.txt"
+curl -X POST http://localhost:8080/api/parse \
+  -F "file=@sample.txt"
 ```
 
 **Response:**
 
 ```json
 {
-  "header": {
-    "recordType": "H",
-    "sender": "BCBSMN",
-    "creationDate": "20260213",
-    "filler": "..."
+  "lines": [...],
+  "summary": {
+    "total": 100,
+    "valid": 98,
+    "invalid": 2,
+    "accepted": 80,
+    "rejected": 20
   },
-  "dataRecords": [
-    {
-      "recordType": "D",
-      "senderClaimNumber": "12345678901234567890",
-      "claimLineNumber": "00001",
-      "memberId": "MEM123456789",
-      "patientFirstName": "JOHN",
-      "patientLastName": "DOE",
-      "patientDob": "19800101",
-      "procedureCode": "99213",
-      "billedAmount": "150.00",
-      "allowedAmount": "120.00",
-      ...
-    }
-  ],
-  "trailer": {
-    "recordType": "T",
-    "totalRecords": 100
-  },
-  "statistics": {
-    "totalRecords": 100
-  }
+  "detectedSchema": "ACK",
+  "rawContent": "..."
 }
 ```
 
 ---
 
-### 2. Parse MRX Text
+### 4. Parse Text
 
-**Endpoint:** `POST /api/mrx/parse-text`
+**Endpoint:** `POST /api/parse-text`
 
-**Description:** Parse MRX file content from raw text
+**Description:** Parse raw text content with auto-detection of file type.
 
 **Request:**
 
 - Method: POST
 - Content-Type: text/plain
-- Body: Raw MRX file content
+- Body: Raw file content
 
-**Example (cURL):**
+---
 
-```bash
-curl -X POST http://localhost:8080/api/mrx/parse-text \
-  -H "Content-Type: text/plain" \
-  --data-binary @mrx-sample.txt
+### 5. Convert MRX → ACK
+
+**Endpoint:** `POST /api/convert/mrx-to-ack` (or `/api/mrx/convert/ack`)
+
+**Description:** Convert an uploaded MRX file to ACK format.
+
+**Request:**
+
+- Method: POST
+- Content-Type: multipart/form-data
+- Parameters: `file` (MultipartFile), `timestamp` (String, optional)
+
+**Response:**
+
+```json
+{
+  "content": "...",
+  "fileName": "generated_ack_file.txt"
+}
 ```
 
 ---
 
-### 3. Parse ACK File (Upload)
+### 6. Convert MRX → RESP
 
-**Endpoint:** `POST /api/ack/parse`
+**Endpoint:** `POST /api/convert/mrx-to-resp` (or `/api/mrx/convert/resp`)
 
-**Description:** Upload and parse an ACK file
+**Description:** Convert an uploaded MRX file to RESP format.
+
+**Request:**
+
+- Method: POST
+- Content-Type: multipart/form-data
+- Parameters: `file` (MultipartFile), `timestamp` (String, optional)
+
+---
+
+### 7. Convert MRX → CSV
+
+**Endpoint:** `POST /api/convert/mrx-to-csv` (or `/api/mrx/convert/csv`)
+
+**Description:** Convert an uploaded MRX file to CSV format.
 
 **Request:**
 
@@ -98,224 +148,77 @@ curl -X POST http://localhost:8080/api/mrx/parse-text \
 - Content-Type: multipart/form-data
 - Parameter: `file` (MultipartFile)
 
-**Example (cURL):**
+---
 
-```bash
-curl -X POST http://localhost:8080/api/ack/parse \
-  -F "file=@ack-sample.txt"
+### 8. Validate Claim
+
+**Endpoint:** `POST /api/validate`
+
+**Description:** Unified validation endpoint for claim operations. Uses a `type` field to determine which validation to run.
+
+**Request:**
+
+- Method: POST
+- Content-Type: application/json
+
+**Type: `STATUS_CHANGE`** — Validates if a claim status change is allowed.
+
+```json
+{
+  "type": "STATUS_CHANGE",
+  "unitsApproved": 5,
+  "newStatus": "PA"
+}
+```
+
+**Type: `PARTIAL_UNITS`** — Validates partial approval unit split.
+
+```json
+{
+  "type": "PARTIAL_UNITS",
+  "totalUnits": 10,
+  "newApproved": 7,
+  "newDenied": 3
+}
 ```
 
 **Response:**
 
 ```json
 {
-  "header": {
-    "recordType": "H",
-    "prime": "PRIME",
-    "sender": "BCBSMN",
-    "creationDate": "20260213",
-    "selectionFromDate": "20260101",
-    "selectionToDate": "20260131"
-  },
-  "dataRecords": [
-    {
-      "recordType": "D",
-      "claimNumber": "12345678901234567890",
-      "claimLineNumber": "00001",
-      "memberId": "MEM123456789",
-      "ackStatus": "A",
-      "rejectCode": ""
-    },
-    {
-      "recordType": "D",
-      "claimNumber": "98765432109876543210",
-      "claimLineNumber": "00002",
-      "memberId": "MEM987654321",
-      "ackStatus": "R",
-      "rejectCode": "EDI3108"
-    }
-  ],
-  "trailer": {
-    "recordType": "T",
-    "totalRecords": 2
-  },
-  "statistics": {
-    "totalRecords": 2,
-    "acceptedCount": 1,
-    "rejectedCount": 1
-  }
+  "isValid": true,
+  "error": null,
+  "allowedStatuses": ["PD", "PA", "DY"]
 }
 ```
-
----
-
-### 4. Parse ACK Text
-
-**Endpoint:** `POST /api/ack/parse-text`
-
-**Description:** Parse ACK file content from raw text
-
-**Request:**
-
-- Method: POST
-- Content-Type: text/plain
-- Body: Raw ACK file content
-
----
-
-### 5. Parse RESP File (Upload)
-
-**Endpoint:** `POST /api/resp/parse`
-
-**Description:** Upload and parse a RESP file
-
-**Request:**
-
-- Method: POST
-- Content-Type: multipart/form-data
-- Parameter: `file` (MultipartFile)
-
-**Example (cURL):**
-
-```bash
-curl -X POST http://localhost:8080/api/resp/parse \
-  -F "file=@resp-sample.txt"
-```
-
-**Response:**
-
-```json
-{
-  "header": {
-    "recordType": "H",
-    "prime": "PRIME",
-    "sender": "BCBSMN",
-    "creationDate": "20260213",
-    "selectionFromDate": "20260101",
-    "selectionToDate": "20260131"
-  },
-  "dataRecords": [
-    {
-      "recordType": "D",
-      "claimNumber": "12345678901234567890",
-      "claimLineNumber": "00001",
-      "mrxClaimNumber": "MRX123456789",
-      "allowedAmount": "120.00",
-      "unitsApproved": "1",
-      "unitsDenied": "0",
-      "claimStatus": "PD",
-      "denialCode": "",
-      "authorizationNumber": "AUTH123",
-      "procedureCode": "99213"
-    },
-    {
-      "recordType": "D",
-      "claimNumber": "98765432109876543210",
-      "claimLineNumber": "00002",
-      "mrxClaimNumber": "MRX987654321",
-      "allowedAmount": "0.00",
-      "unitsApproved": "0",
-      "unitsDenied": "1",
-      "claimStatus": "DY",
-      "denialCode": "GI",
-      "authorizationNumber": "",
-      "procedureCode": "99214"
-    }
-  ],
-  "trailer": {
-    "recordType": "T",
-    "totalRecords": 2
-  },
-  "statistics": {
-    "totalRecords": 2,
-    "paidCount": 1,
-    "deniedCount": 1,
-    "partialCount": 0
-  }
-}
-```
-
----
-
-### 6. Parse RESP Text
-
-**Endpoint:** `POST /api/resp/parse-text`
-
-**Description:** Parse RESP file content from raw text
-
-**Request:**
-
-- Method: POST
-- Content-Type: text/plain
-- Body: Raw RESP file content
 
 ---
 
 ## Status Codes
 
-- **200 OK**: Request successful, file parsed
+- **200 OK**: Request successful
 - **400 Bad Request**: Invalid file format or parsing error
-- **500 Internal Server Error**: Server error during file processing
-
-## Error Handling
-
-All endpoints return standard HTTP status codes. In case of errors, the response body will be empty or contain error details.
+- **500 Internal Server Error**: Server error during processing
 
 ## CORS
 
-CORS is enabled for all origins (`*`) in development mode. Update the `@CrossOrigin` annotation in controllers for production deployment.
+CORS is enabled for all origins (`*`) in development mode. Update the `@CrossOrigin` annotation for production.
 
 ## File Format Requirements
 
 ### MRX Files
 
-- Fixed-width format
-- Record length: 921 characters
+- Fixed-width format, 921 characters per line
 - Record types: H (Header), D (Data), T (Trailer)
 
 ### ACK Files
 
-- Fixed-width format
-- Record length: 220 characters
+- Fixed-width format, 220 characters per line
 - Record types: H (Header), D (Data), T (Trailer)
 - Status values: A (Accept), R (Reject)
 
 ### RESP Files
 
-- Fixed-width format
-- Record length: 230 characters
+- Fixed-width format, 230 characters per line
 - Record types: H (Header), D (Data), T (Trailer)
 - Status values: PD (Paid), DY (Denied), PA (Partial Approval)
-
-## Integration Example (JavaScript/Fetch)
-
-```javascript
-// Upload file
-const formData = new FormData();
-formData.append("file", fileInput.files[0]);
-
-fetch("http://localhost:8080/api/ack/parse", {
-  method: "POST",
-  body: formData,
-})
-  .then((response) => response.json())
-  .then((data) => {
-    console.log("Parsed data:", data);
-    console.log("Statistics:", data.statistics);
-  })
-  .catch((error) => console.error("Error:", error));
-```
-
-```javascript
-// Parse text content
-fetch("http://localhost:8080/api/ack/parse-text", {
-  method: "POST",
-  headers: {
-    "Content-Type": "text/plain",
-  },
-  body: fileContent,
-})
-  .then((response) => response.json())
-  .then((data) => console.log("Parsed data:", data))
-  .catch((error) => console.error("Error:", error));
-```
