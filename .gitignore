@@ -1,1 +1,5 @@
 /.metadata/
+node_modules/
+*.log
+testing/ack2-log.txt
+.*/
