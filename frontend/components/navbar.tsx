@@ -1,9 +1,11 @@
 "use client"
 
-import React from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Zap, Sun, Moon } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { cn } from '../lib/utils'
+import { checkHealth } from '@/lib/api'
+import { toast } from 'sonner'
 
 interface NavbarProps {
     activeTab: 'visualizer' | 'converter';
@@ -18,6 +20,7 @@ export function Navbar({ activeTab, onTabChange }: NavbarProps) {
                 <div className="flex items-center gap-2.5">
                     <Zap className="w-4 h-4 text-primary" />
                     <span className="text-xs font-bold tracking-[0.2em]">MAGELLAN</span>
+                    <BackendStatus />
                 </div>
 
                 {/* Navigation Tabs - Minimalist Style */}
@@ -42,7 +45,7 @@ export function Navbar({ activeTab, onTabChange }: NavbarProps) {
                                 : "text-muted-foreground hover:text-foreground"
                         )}
                     >
-                        MRX Forge
+                        Prepay Forge
                     </button>
                 </div>
             </div>
@@ -51,6 +54,67 @@ export function Navbar({ activeTab, onTabChange }: NavbarProps) {
             <ThemeToggle />
         </nav>
     )
+}
+
+/**
+ * BackendStatus — Lightweight heartbeat indicator.
+ * Polls /health every 5 seconds and shows a live/offline dot.
+ * Fires a toast when status transitions (online → offline or offline → online).
+ */
+function BackendStatus() {
+    const [isOnline, setIsOnline] = useState<boolean | null>(null); // null = initial check pending
+    const prevOnline = useRef<boolean | null>(null);
+
+    useEffect(() => {
+        let active = true;
+
+        const poll = async () => {
+            const alive = await checkHealth();
+            if (!active) return;
+
+            setIsOnline(alive);
+
+            // Notify on transitions (skip the very first check to avoid a "connected" toast on load)
+            if (prevOnline.current !== null && prevOnline.current !== alive) {
+                if (alive) {
+                    toast.success('Backend Online', {
+                        description: 'Connection to the processing engine restored.',
+                        duration: 2000,
+                    });
+                } else {
+                    toast.error('Backend Offline', {
+                        description: 'Cannot reach the processing engine. Retrying...',
+                        duration: 5000,
+                    });
+                }
+            }
+            prevOnline.current = alive;
+        };
+
+        // Immediate first check
+        poll();
+
+        // Then every 5 seconds
+        const interval = setInterval(poll, 5000);
+        return () => { active = false; clearInterval(interval); };
+    }, []);
+
+    // Don't render anything until first check completes
+    if (isOnline === null) {
+        return <div className="w-2 h-2 rounded-full bg-muted-foreground/30 ml-1" title="Checking backend..." />;
+    }
+
+    return (
+        <div
+            className={cn(
+                "w-2 h-2 rounded-full ml-1 transition-colors duration-300",
+                isOnline
+                    ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]"
+                    : "bg-rose-500 animate-pulse shadow-[0_0_6px_rgba(225,29,72,0.5)]"
+            )}
+            title={isOnline ? "Backend: Online" : "Backend: Offline"}
+        />
+    );
 }
 
 function ThemeToggle() {

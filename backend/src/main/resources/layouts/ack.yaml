@@ -64,7 +64,7 @@ data:
       description: "Valid Value: D=Data",
     }
   - {
-      name: "Client Claim #",
+      name: "Client Claim Id",
       start: 2,
       end: 21,
       length: 20,

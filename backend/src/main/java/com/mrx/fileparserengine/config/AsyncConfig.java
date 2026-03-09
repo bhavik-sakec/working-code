@@ -21,8 +21,8 @@ public class AsyncConfig implements WebMvcConfigurer {
 
     @Override
     public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
-        // 5 minutes — enough for 1M line MRX files to serialize to JSON
-        configurer.setDefaultTimeout(300_000);
+        // 10 minutes — enough for 1M line MRX files to serialize to JSON safely
+        configurer.setDefaultTimeout(600_000);
 
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(4);
@@ -33,4 +33,3 @@ public class AsyncConfig implements WebMvcConfigurer {
         configurer.setTaskExecutor(executor);
     }
 }
-

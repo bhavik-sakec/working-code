@@ -19,4 +19,5 @@ public class SummaryDTO {
     private int invalid;
     private int accepted;
     private int rejected;
+    private int partial;
 }

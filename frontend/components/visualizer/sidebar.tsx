@@ -2,8 +2,8 @@
 
 import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { FileText, Upload, AlertTriangle, Check, ChevronLeft, ChevronRight, X, Activity, ShieldAlert } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { FileText, Upload, Check, ChevronLeft, ChevronRight, X, Activity, ShieldAlert } from 'lucide-react';
+import { useStore } from '@/lib/store';
 import { ParseResult, ParsedLine, ParsedField } from '@/lib/types';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 
@@ -11,7 +11,7 @@ interface VisualizerSidebarProps {
     isSidebarOpen: boolean;
     setIsSidebarOpen: (o: boolean) => void;
     content: string;
-    schema: 'ACK' | 'RESP' | 'MRX';
+    schema: 'ACK' | 'RESP' | 'MRX' | 'INVALID';
     isDragging: boolean;
     handleDragOver: (e: React.DragEvent) => void;
     handleDragLeave: (e: React.DragEvent) => void;
@@ -37,12 +37,18 @@ export function VisualizerSidebar({
     handleDrop,
     handleFileInput,
     fileInputRef,
-    clearContent,
-    setSchema,
     result,
     virtuosoRef,
     fileName
 }: VisualizerSidebarProps) {
+    const { activeFiles, activeFileId, switchFile, closeFile } = useStore();
+    
+    // EXCLUSIVE: Data Matrix tab only manages ACK & RESP protocols. 
+    // Prepay Forge maintains its own separate slot for raw streams.
+    const matrixFiles = useMemo(() => 
+        activeFiles.filter(f => f.schema !== 'MRX'),
+    [activeFiles]);
+
     return (
         <aside
             className={cn(
@@ -72,10 +78,77 @@ export function VisualizerSidebar({
             {isSidebarOpen ? (
                 <div className="flex-1 flex flex-col min-h-0 overflow-hidden animate-in fade-in slide-in-from-left-4 duration-300 relative z-10">
                     <div className="p-5 border-b border-border space-y-5 pt-8 bg-muted/5">
-                        {/* DROPZONE */}
+                        {/* SESSION TABS */}
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-primary/40">Active Project Workspace</span>
+                                <span className="text-[8px] font-bold text-muted-foreground/40">{matrixFiles.length}/2 MATRIX SLOTS</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 gap-2">
+                                {activeFiles.filter(f => f.schema !== 'MRX').map((file) => (
+                                    <div 
+                                        key={file.id}
+                                        onClick={() => switchFile(file.id)}
+                                        className={cn(
+                                            "relative group p-3 border transition-all duration-200 cursor-pointer flex items-center gap-3",
+                                            activeFileId === file.id 
+                                                ? "bg-primary/10 border-primary/50 ring-1 ring-primary/20" 
+                                                : "bg-background/20 border-border/30 hover:border-primary/30"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-7 h-7 flex items-center justify-center rounded-none border shrink-0",
+                                            activeFileId === file.id ? "bg-primary/20 border-primary/40" : "bg-muted/10 border-border/50"
+                                        )}>
+                                            <FileText className={cn("w-4 h-4", activeFileId === file.id ? "text-primary" : "text-muted-foreground")} />
+                                        </div>
+                                        <div className="flex-1 min-w-0 pr-6">
+                                            <div className="text-[10px] font-black truncate uppercase tracking-tight text-foreground">{file.name}</div>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <div className={cn(
+                                                    "w-1 h-1 rounded-full",
+                                                    file.isSessionMode ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                                                )} />
+                                                <span className="text-[8px] font-bold text-muted-foreground uppercase opacity-60">
+                                                    {file.isSessionMode ? 'Disk Index Active' : 'Matrix Buffer Locked'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); closeFile(file.id); }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground/40 hover:text-rose-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        >
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))}
+
+                                {matrixFiles.length === 1 && (
+                                    <button 
+                                        onClick={() => fileInputRef.current?.click()}
+                                        onDragOver={(e) => { e.preventDefault(); handleDragOver(e); }}
+                                        onDragLeave={(e) => { e.preventDefault(); handleDragLeave(e); }}
+                                        onDrop={(e) => { e.preventDefault(); handleDrop(e); }}
+                                        className={cn(
+                                            "group p-3 border border-dashed border-border/30 hover:border-primary/50 transition-all duration-200 flex items-center gap-3 bg-muted/5 opacity-60 hover:opacity-100",
+                                            isDragging && "bg-primary/10 border-primary border-solid opacity-100 animate-pulse"
+                                        )}
+                                    >
+                                        <div className="w-7 h-7 flex items-center justify-center border border-dashed border-border/50 bg-background group-hover:border-primary/40">
+                                            <Upload className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary/70" />
+                                        </div>
+                                        <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 group-hover:text-primary/70">Ingest New File</div>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* DROPZONE (Minimized) */}
+                        {matrixFiles.length === 0 && (
                         <div
                             className={cn(
-                                "relative h-44 border border-border/50 transition-all duration-300 flex flex-col items-center justify-center gap-3 cursor-pointer overflow-hidden group hover:border-primary",
+                                "relative h-32 border border-border/50 transition-all duration-300 flex flex-col items-center justify-center gap-3 cursor-pointer overflow-hidden group hover:border-primary",
                                 isDragging && "bg-primary/5 border-primary animate-pulse",
                                 content ? "bg-primary/[0.02]" : "bg-transparent"
                             )}
@@ -88,36 +161,12 @@ export function VisualizerSidebar({
                             {isDragging && (
                                 <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/10 to-transparent h-1/2 w-full animate-scan pointer-events-none" />
                             )}
-
-                            {content ? (
-                                <>
-                                    <div className="relative">
-                                        <div className="absolute -inset-2 bg-primary/20 blur-xl rounded-full opacity-50" />
-                                        <FileText className="w-8 h-8 text-primary relative" />
-                                    </div>
-                                    <div className="text-center">
-                                        <span className="text-[10px] text-primary font-black block tracking-widest uppercase mb-1">Source Locked</span>
-                                        <span className="text-muted-foreground text-[9px] uppercase tracking-tighter opacity-60">Ready for processing</span>
-                                    </div>
-                                </>
-                            ) : (
-                                <>
-                                    <Upload className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors" />
-                                    <div className="text-center px-4">
-                                        <span className="block font-black text-[10px] tracking-widest uppercase group-hover:text-primary transition-colors mb-1">Upload Source</span>
-                                        <span className="text-[9px] text-muted-foreground uppercase tracking-tighter opacity-60">Drop Object or Click</span>
-                                    </div>
-                                </>
-                            )}
+                            <Upload className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                            <div className="text-center px-4">
+                                <span className="block font-black text-[9px] tracking-widest uppercase group-hover:text-primary transition-colors mb-1">Upload ACK/RESP/MRX FILES</span>
+                                <span className="text-[8px] text-muted-foreground uppercase tracking-tighter opacity-60">Initialize Workspace</span>
+                            </div>
                         </div>
-
-                        {content && (
-                            <button
-                                onClick={clearContent}
-                                className="w-full flex items-center justify-center gap-2 h-9 border border-rose-500/20 text-rose-500 text-[10px] font-black tracking-[0.2em] hover:bg-rose-500/10 hover:border-rose-500/50 transition-all uppercase"
-                            >
-                                <X className="w-3.5 h-3.5" /> TERMINATE SESSION
-                            </button>
                         )}
                     </div>
 
@@ -125,7 +174,7 @@ export function VisualizerSidebar({
                     <div className="px-5 py-4 border-b border-border bg-muted/5 group">
                         <div className="text-[9px] uppercase tracking-[0.2em] font-black text-primary/40 mb-3">System Metadata</div>
                         <div className="space-y-3">
-                            {fileName ? (
+                            {fileName && schema !== 'MRX' && schema !== 'INVALID' ? (
                                 <>
                                     <div className="space-y-1">
                                         <div className="text-[9px] uppercase tracking-tighter text-muted-foreground opacity-60">Identifier</div>
@@ -175,7 +224,7 @@ export function VisualizerSidebar({
 
 /** Memoized error log — avoids re-filtering invalidLines on unrelated sidebar re-renders */
 const SidebarErrorLog = React.memo(function SidebarErrorLog({ result, virtuosoRef }: { result: ParseResult; virtuosoRef: React.RefObject<VirtuosoHandle | null> }) {
-    const invalidLines = useMemo(() => result.lines.filter((l: ParsedLine) => !l.isValid), [result.lines]);
+    const invalidLines = useMemo(() => result.lines.filter((l: ParsedLine) => l && !l.isValid), [result.lines]);
     const hasIntegrityBreach = result.validationErrors && result.validationErrors.length > 0;
 
     if (invalidLines.length === 0 && !hasIntegrityBreach) {

@@ -5,10 +5,11 @@ import { Loader2 } from 'lucide-react';
 
 interface LoadingOverlayProps {
     isLoading: boolean;
-    activePhase: 'IDLE' | 'UPLOADING' | 'PROCESSING';
+    activePhase: 'IDLE' | 'UPLOADING' | 'PROCESSING' | 'PARSING' | 'INDEXING';
     uploadProgress: number;
     processProgress: number;
     processedLines: number;
+    fetchingProgress?: number;
 }
 
 export function LoadingOverlay({
@@ -16,7 +17,8 @@ export function LoadingOverlay({
     activePhase,
     uploadProgress,
     processProgress,
-    processedLines
+    processedLines,
+    fetchingProgress = 0
 }: LoadingOverlayProps) {
     if (!isLoading) return null;
 
@@ -36,7 +38,7 @@ export function LoadingOverlay({
                 <div className="space-y-1.5">
                     <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold">
                         <span className={activePhase === 'UPLOADING' ? "text-primary" : "text-muted-foreground"}>
-                            {activePhase === 'UPLOADING' ? '>> INGESTING_STREAM' : 'INGEST_COMPLETE'}
+                            {activePhase === 'UPLOADING' ? (">>" + " INGESTING_STREAM") : 'INGEST_COMPLETE'}
                         </span>
                         {activePhase === 'UPLOADING' && <span>{uploadProgress}%</span>}
                     </div>
@@ -50,10 +52,11 @@ export function LoadingOverlay({
 
                 <div className="space-y-1.5">
                     <div className="flex justify-between text-[11px] uppercase tracking-widest font-bold">
-                        <span className={activePhase === 'PROCESSING' ? "text-primary" : "text-muted-foreground"}>
-                            {activePhase === 'PROCESSING' ? '>> PARSING_SCHEMA' : 'AWAITING_PROCESS'}
+                        <span className={['PROCESSING', 'INDEXING'].includes(activePhase) ? "text-primary" : "text-muted-foreground"}>
+                            {activePhase === 'INDEXING' ? (">>" + " DISCOVERING_ROWS") : 
+                             activePhase === 'PROCESSING' ? (">>" + " PARSING_SCHEMA") : 'AWAITING_PROCESS'}
                         </span>
-                        {activePhase === 'PROCESSING' && <span>{processedLines.toLocaleString()} L</span>}
+                        {['PROCESSING', 'INDEXING'].includes(activePhase) && <span>{processedLines.toLocaleString()} L</span>}
                     </div>
                     <div className="h-1 w-full bg-muted overflow-hidden rounded-full">
                         <div
@@ -63,9 +66,26 @@ export function LoadingOverlay({
                     </div>
                 </div>
 
+                {fetchingProgress > 0 && (
+                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-500">
+                        <div className="flex justify-between text-[11px] uppercase tracking-widest font-black text-primary">
+                            <span>{">>" + " "}HYDRATING_UI</span>
+                            <span>{fetchingProgress}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-primary/10 overflow-hidden rounded-full border border-primary/20">
+                            <div
+                                className="h-full bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.5)] transition-all duration-300 ease-out"
+                                style={{ width: `${fetchingProgress}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
                 <div className="text-center pt-2">
                     <div className="text-[11px] text-muted-foreground font-mono opacity-80 italic animate-pulse">
-                        {activePhase === 'UPLOADING' ? 'Streaming raw pulses to memory...' : 'Validating fixed-width alignment...'}
+                        {activePhase === 'UPLOADING' ? 'Parsing raw data to memory...' : 
+                         activePhase === 'INDEXING' ? 'Building fast random-access map...' :
+                         'Validating fixed-width alignment...'}
                     </div>
                 </div>
             </div>

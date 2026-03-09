@@ -10,15 +10,15 @@ export function cn(...inputs: ClassValue[]) {
  * Ensures backend summary always includes the required fields (totalClaims, partial, etc.)
  */
 export const normalizeSummary = (
-  s: { [key: string]: any }
+  s: Record<string, unknown>
 ): ParseResult['summary'] => ({
-  total: s.total ?? 0,
-  valid: s.valid ?? 0,
-  invalid: s.invalid ?? 0,
-  accepted: s.accepted ?? 0,
-  rejected: s.rejected ?? 0,
-  totalClaims: s.totalClaims ?? s.total ?? 0,
-  partial: s.partial ?? 0,
+  total: (s.total as number) ?? 0,
+  valid: (s.valid as number) ?? 0,
+  invalid: (s.invalid as number) ?? 0,
+  accepted: (s.accepted as number) ?? 0,
+  rejected: (s.rejected as number) ?? 0,
+  totalClaims: (s.totalClaims as number) ?? (s.total as number) ?? 0,
+  partial: (s.partial as number) ?? 0,
 });
 
 /**

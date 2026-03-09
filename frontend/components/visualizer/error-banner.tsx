@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertTriangle, WifiOff, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
 
 interface ErrorBannerProps {
     error: string;
@@ -12,6 +12,8 @@ export const ErrorBanner = ({ error, onDismiss }: ErrorBannerProps) => {
     const isConnectionError = error.toLowerCase().includes('connect') || 
                               error.toLowerCase().includes('engine') || 
                               error.toLowerCase().includes('server');
+
+    const is404Or405 = error.includes('404') || error.includes('405') || error.toLowerCase().includes('not found');
 
     return (
         <div className="relative mt-8 group animate-in fade-in slide-in-from-bottom-4 zoom-in-95 duration-500">
@@ -31,7 +33,7 @@ export const ErrorBanner = ({ error, onDismiss }: ErrorBannerProps) => {
                     <div className="flex-1 space-y-1">
                         <div className="flex items-center justify-between">
                             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-rose-500">
-                                {isConnectionError ? 'System Service Offline' : 'Processing Interrupted'}
+                                {is404Or405 ? 'Endpoint Anomaly' : (isConnectionError ? 'System Service Offline' : 'Processing Interrupted')}
                             </h4>
                             <button
                                 onClick={onDismiss}
@@ -43,7 +45,7 @@ export const ErrorBanner = ({ error, onDismiss }: ErrorBannerProps) => {
                         <p className="text-xs text-zinc-300 font-medium leading-relaxed pr-2">
                             {error}
                         </p>
-                        {isConnectionError && (
+                        {isConnectionError && !is404Or405 && (
                             <div className="pt-2 flex items-center gap-2">
                                 <div className="w-1 h-1 rounded-full bg-rose-500 animate-pulse" />
                                 <span className="text-[9px] text-rose-500/80 font-bold uppercase tracking-widest leading-none">Establishing safe reconnection...</span>

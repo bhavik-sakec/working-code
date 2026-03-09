@@ -1,18 +1,24 @@
 package com.mrx.fileparserengine.controller;
 
+import com.mrx.fileparserengine.dto.SessionResponseDTO;
 import com.mrx.fileparserengine.dto.UnifiedParseResponse;
 import com.mrx.fileparserengine.service.UnifiedParserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.MultipartFile;
 
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Unified REST Controller for file parsing operations.
@@ -23,7 +29,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "*", methods = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.PUT, RequestMethod.OPTIONS}, allowedHeaders = "*")
 public class UnifiedParserController {
 
     private final UnifiedParserService unifiedParserService;
@@ -80,37 +86,97 @@ public class UnifiedParserController {
     public java.util.concurrent.Callable<ResponseEntity<UnifiedParseResponse>> parseFile(
             @RequestParam("file") MultipartFile file) {
 
-        // Read bytes on the Tomcat thread (MultipartFile may not be available later)
-        final byte[] fileBytes;
         final String fileNameHint = file.getOriginalFilename();
+        final Path tempFile;
+
         try {
-            fileBytes = file.getBytes();
+            tempFile = Files.createTempFile("mrx_upload_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(tempFile.toFile());
+            log.info("Saved upload to temp file: {} ({} bytes)", tempFile, Files.size(tempFile));
         } catch (IOException e) {
-            log.error("Error reading uploaded file", e);
+            log.error("Error saving uploaded file to disk", e);
             return () -> ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
 
-        log.info("Received file upload for unified parsing: {} ({} bytes)", fileNameHint, fileBytes.length);
+        log.info("Received file upload for unified parsing: {}", fileNameHint);
 
-        // ⚡ Parsing + JSON serialization runs on async thread (not Tomcat NIO thread)
         return () -> {
             try {
-                String fileContent = new String(fileBytes, StandardCharsets.UTF_8);
+                long start = System.currentTimeMillis();
+                UnifiedParseResponse response = unifiedParserService.parseFile(tempFile, fileNameHint);
 
-                long parseStart = System.currentTimeMillis();
-                UnifiedParseResponse response = unifiedParserService.parseFile(fileContent, fileNameHint);
-                long parseMs = System.currentTimeMillis() - parseStart;
+                // Cleanup temp file after parsing
+                Files.deleteIfExists(tempFile);
 
+                long parseMs = System.currentTimeMillis() - start;
                 int lineCount = response.getLines() != null ? response.getLines().size() : 0;
-                log.info("Parsed {} lines in {}ms. Schema: {}", lineCount, parseMs, response.getDetectedSchema());
+                long usedMem = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+                log.info("Parsed {} lines in {}ms. Schema: {}. Memory: {}MB", lineCount, parseMs, response.getDetectedSchema(), usedMem);
 
                 return ResponseEntity.ok(response);
 
             } catch (Exception e) {
-                log.error("Error parsing file", e);
+                log.error("Error parsing content from Path", e);
+                // Try cleanup in case of error
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException ignored) {
+                }
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
         };
+    }
+
+    /**
+     * Stream parse any file (ACK/RESP/MRX) with auto-detection.
+     * Returns NDJSON stream for incremental frontend loading.
+     *
+     * @param file The uploaded file
+     * @return Streaming response
+     */
+    @PostMapping(value = "/parse-stream", consumes = "multipart/form-data")
+    public ResponseEntity<StreamingResponseBody> parseFileStream(
+            @RequestParam("file") MultipartFile file) {
+
+        final String fileNameHint = file.getOriginalFilename();
+        final Path tempFile;
+
+        try {
+            tempFile = Files.createTempFile("mrx_stream_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(tempFile.toFile());
+            log.info("Saved upload to temp file for streaming: {} ({} bytes)", tempFile, Files.size(tempFile));
+        } catch (IOException e) {
+            log.error("Error saving uploaded file to disk", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+
+        log.info("Starting unified streaming parse for: {}", fileNameHint);
+
+        try {
+            StreamingResponseBody stream = unifiedParserService.parseToStream(tempFile, fileNameHint);
+
+            return ResponseEntity.ok()
+                    .header("Content-Type", "application/x-ndjson")
+                    .body(outputStream -> {
+                        try {
+                            stream.writeTo(outputStream);
+                        } finally {
+                            try {
+                                Files.deleteIfExists(tempFile);
+                                log.info("Cleaned up streaming temp file: {}", tempFile);
+                            } catch (IOException e) {
+                                log.warn("Failed to delete temp file: {}", tempFile);
+                            }
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("Failed to initialize streaming parse", e);
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException ignored) {
+            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
     /**
@@ -131,9 +197,10 @@ public class UnifiedParserController {
                 long parseStart = System.currentTimeMillis();
                 UnifiedParseResponse response = unifiedParserService.parseFile(fileContent, null);
                 long parseMs = System.currentTimeMillis() - parseStart;
+                long usedMem = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
 
                 int lineCount = response.getLines() != null ? response.getLines().size() : 0;
-                log.info("Parsed {} lines in {}ms. Schema: {}", lineCount, parseMs, response.getDetectedSchema());
+                log.info("Parsed {} lines in {}ms. Schema: {}. Memory: {}MB", lineCount, parseMs, response.getDetectedSchema(), usedMem);
 
                 return ResponseEntity.ok(response);
 
@@ -142,6 +209,36 @@ public class UnifiedParserController {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
         };
+    }
+
+    /** Expected fixed line length for the MRX protocol. */
+    private static final int MRX_LINE_LENGTH = 921;
+
+    /**
+     * Validates that every non-empty line in an MRX file is exactly MRX_LINE_LENGTH
+     * chars.
+     * Returns an error message if a violation is found, or null if the file is
+     * clean.
+     * Only reads the file once (BufferedReader, fast scan — no parsing).
+     */
+    private String validateMrxLineLengths(Path filePath) throws IOException {
+        try (java.io.BufferedReader reader = Files.newBufferedReader(filePath,
+                java.nio.charset.StandardCharsets.ISO_8859_1)) {
+            int lineNum = 0;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lineNum++;
+                if (line.isEmpty())
+                    continue;
+                if (line.length() != MRX_LINE_LENGTH) {
+                    return String.format(
+                            "Structural integrity check failed: Line %d has %d characters (expected %d). " +
+                                    "All MRX lines must be exactly %d characters. Fix the data before converting.",
+                            lineNum, line.length(), MRX_LINE_LENGTH, MRX_LINE_LENGTH);
+                }
+            }
+        }
+        return null; // Clean
     }
 
     private static final String ALLOWED_TIMESTAMP_PATTERN = "^[a-zA-Z0-9._-]*$";
@@ -189,20 +286,38 @@ public class UnifiedParserController {
             validateTimestamp(timestamp);
             timestamp = cleanTimestamp(timestamp);
 
-            log.info("Converting MRX to ACK");
+            long usedMemStart = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+            log.info("Converting MRX to ACK. Memory: {}MB", usedMemStart);
 
-            String fileContent = new String(file.getBytes(), StandardCharsets.UTF_8);
+            Path tempFile = Files.createTempFile("mrx_ack_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(tempFile.toFile());
+
+            // ── STRUCTURAL INTEGRITY GATE ──
+            String lengthError = validateMrxLineLengths(tempFile);
+            if (lengthError != null) {
+                Files.deleteIfExists(tempFile);
+                log.warn("ACK conversion blocked — MRX structural error: {}", lengthError);
+                return ResponseEntity.status(HttpStatus.valueOf(422))
+                        .body(Map.of("error", lengthError));
+            }
+
             if (timestamp.isEmpty()) {
                 timestamp = java.time.LocalDateTime.now()
                         .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             }
+            String datePart = timestamp.length() >= 8 ? timestamp.substring(0, 8) : timestamp;
 
-            String ackContent = unifiedParserService.convertMrxToAck(fileContent, timestamp,
+            String ackContent = unifiedParserService.convertMrxToAck(tempFile, timestamp,
                     Math.max(0, Math.min(100, rejectPercentage)), rejectCount, randomizeRejectCodes);
 
+            // Cleanup
+            Files.deleteIfExists(tempFile);
+
+            long usedMemEnd = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
             return ResponseEntity.ok(Map.of(
                     "content", ackContent,
-                    "fileName", "TEST.MCMSMN_CLAIMS_ACK_" + timestamp + ".txt"));
+                    "fileName", "TEST.PRIME_BCBSMN_GEN_CLAIMS_ACK_" + datePart + ".txt",
+                    "memoryUsed", usedMemEnd + "MB"));
 
         } catch (IllegalArgumentException e) {
             log.warn("Security validation failed: {}", e.getMessage());
@@ -238,24 +353,42 @@ public class UnifiedParserController {
             validateTimestamp(timestamp);
             timestamp = cleanTimestamp(timestamp);
 
-            log.info("Converting MRX to RESP [deny={}%, partial={}%]", denyPercentage, partialPercentage);
+            long usedMemStart = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+            log.info("Converting MRX to RESP [deny={}%, partial={}%]. Memory: {}MB", denyPercentage, partialPercentage, usedMemStart);
 
-            String fileContent = new String(file.getBytes(), StandardCharsets.UTF_8);
+            Path tempFile = Files.createTempFile("mrx_resp_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(tempFile.toFile());
+
+            // ── STRUCTURAL INTEGRITY GATE ──
+            String lengthError = validateMrxLineLengths(tempFile);
+            if (lengthError != null) {
+                Files.deleteIfExists(tempFile);
+                log.warn("RESP conversion blocked — MRX structural error: {}", lengthError);
+                return ResponseEntity.status(HttpStatus.valueOf(422))
+                        .body(Map.of("error", lengthError));
+            }
+
             if (timestamp.isEmpty()) {
                 timestamp = java.time.LocalDateTime.now()
                         .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             }
+            String datePart = timestamp.length() >= 8 ? timestamp.substring(0, 8) : timestamp;
 
             String respContent = unifiedParserService.convertMrxToResp(
-                    fileContent, timestamp,
+                    tempFile, timestamp,
                     Math.max(0, Math.min(100, denyPercentage)), denyCount, denialCode,
                     Math.max(0, Math.min(100, partialPercentage)), partialCount,
                     Math.max(1, Math.min(99, partialApprovedPercent)),
                     randomizeDenialCodes);
 
+            // Cleanup
+            Files.deleteIfExists(tempFile);
+
+            long usedMemEnd = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
             return ResponseEntity.ok(Map.of(
                     "content", respContent,
-                    "fileName", "TEST.PRIME.BCBSMN_GEN_CLAIM_RESP_" + timestamp + ".txt"));
+                    "fileName", "TEST.PRIME.BCBSMN_GEN_CLAIM_RESP_" + datePart + ".txt",
+                    "memoryUsed", usedMemEnd + "MB"));
 
         } catch (IllegalArgumentException e) {
             log.warn("Security validation failed: {}", e.getMessage());
@@ -276,19 +409,29 @@ public class UnifiedParserController {
      * @return Generated CSV content
      */
     @PostMapping(value = { "/mrx/convert/csv", "/convert/mrx-to-csv" }, consumes = "multipart/form-data")
-    public ResponseEntity<Map<String, String>> convertMrxToCsv(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<Map<String, String>> convertMrxToCsv(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "timestamp", defaultValue = "") String timestamp) {
         try {
             log.info("Converting MRX to CSV");
 
-            String fileContent = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String timestamp = java.time.LocalDateTime.now()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            Path tempFile = Files.createTempFile("mrx_csv_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(tempFile.toFile());
 
-            String csvContent = unifiedParserService.convertMrxToCsv(fileContent);
+            if (timestamp.isEmpty()) {
+                timestamp = java.time.LocalDateTime.now()
+                        .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            }
+            String datePart = timestamp.length() >= 8 ? timestamp.substring(0, 8) : timestamp;
+
+            String csvContent = unifiedParserService.convertMrxToCsv(tempFile);
+
+            // Cleanup
+            Files.deleteIfExists(tempFile);
 
             return ResponseEntity.ok(Map.of(
                     "content", csvContent,
-                    "fileName", "TEST.MCMSMN_CLAIMS_EXPORT_" + timestamp + ".csv"));
+                    "fileName", "CSV_MRX_" + datePart + ".csv"));
 
         } catch (IOException e) {
             log.error("Error reading file for CSV conversion", e);
@@ -355,6 +498,153 @@ public class UnifiedParserController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("isValid", false, "error", "Invalid request: " + e.getMessage()));
         }
+    }
+
+    /**
+     * ⚡ ELITE TIER: Initialize a large-file parsing session.
+     * Indexes the file on the server and returns metadata + summary.
+     */
+    @PostMapping(value = "/session/init", consumes = "multipart/form-data")
+    public ResponseEntity<SessionResponseDTO> initSession(
+            @RequestParam("file") MultipartFile file) {
+
+        final String fileNameHint = file.getOriginalFilename();
+        final Path persistentFile;
+
+        try {
+            // In a pro system, we might move this to a dedicated "uploads" directory
+            // For now we use temp files that persist for the session duration
+            persistentFile = Files.createTempFile("mrx_session_" + UUID.randomUUID(), ".tmp");
+            file.transferTo(persistentFile.toFile());
+            log.info("Initialized session file: {} ({} bytes)", persistentFile, Files.size(persistentFile));
+
+            SessionResponseDTO sessionResponse = unifiedParserService.createSession(persistentFile, fileNameHint);
+            return ResponseEntity.ok(sessionResponse);
+        } catch (IOException e) {
+            log.error("Error initializing session", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * ⚡ ELITE TIER: Fetch a range of rows for an active session.
+     * Enables O(1) random access to any part of a 10M line file.
+     */
+    @GetMapping("/session/{sessionId}/rows")
+    public ResponseEntity<?> getSessionRows(
+            @PathVariable String sessionId,
+            @RequestParam(value = "start", defaultValue = "0") int start,
+            @RequestParam(value = "limit", defaultValue = "200") int limit) {
+        try {
+            return ResponseEntity.ok(unifiedParserService.getSessionRows(sessionId, start, limit));
+        } catch (Exception e) {
+            log.error("Error fetching session rows", e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
+     * ⚡ ELITE TIER: Poll the status of a background indexing session.
+     */
+    @GetMapping("/session/{sessionId}/status")
+    public ResponseEntity<Map<String, Object>> getSessionStatus(@PathVariable String sessionId) {
+        return ResponseEntity.ok(unifiedParserService.getSessionStatus(sessionId));
+    }
+
+    /**
+     * ⚡ ELITE TIER: Export the full file of the session.
+     */
+    @GetMapping("/session/{sessionId}/export")
+    public ResponseEntity<org.springframework.core.io.Resource> exportSession(@PathVariable String sessionId) {
+        try {
+            Path filePath = unifiedParserService.getSessionFile(sessionId);
+            if (filePath == null || !Files.exists(filePath)) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+            }
+            // Retrieve the original filename from a session
+            var session = unifiedParserService.getSessionManager().getSession(sessionId);
+            String originalFileName = "export.txt";
+            if (session != null && session.getFileName() != null && !session.getFileName().isBlank()) {
+                originalFileName = session.getFileName();
+            }
+            org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(filePath.toUri());
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + originalFileName + "\"")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "text/plain; charset=ISO-8859-1")
+                    .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                    .header(org.springframework.http.HttpHeaders.PRAGMA, "no-cache")
+                    .contentLength(Files.size(filePath))
+                    .body(resource);
+        } catch (Exception e) {
+            log.error("Error exporting session file", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * ⚡ ELITE TIER: Execute a batch randomization/update on a large-file session.
+     * Returns Callable to avoid blocking Tomcat NIO threads during I/O-heavy operations.
+     */
+    @PostMapping("/session/{sessionId}/batch-execute-stream")
+    public ResponseEntity<StreamingResponseBody> batchExecuteSessionStream(
+            @PathVariable String sessionId,
+            @RequestBody Map<String, Object> config) {
+
+        final String mode = (String) config.get("mode");
+        final int pct = parseIntParam(config.get("pct"));
+        final int count = parseIntParam(config.get("count"));
+        final boolean randomizeCodes = (boolean) config.getOrDefault("randomizeCodes", false);
+        final String denialCode = (String) config.getOrDefault("denialCode", "");
+
+        log.info("Batch Streaming executing on session {}: mode={}, pct={}%", sessionId, mode, pct);
+
+        StreamingResponseBody stream = unifiedParserService.applySessionBatchActionStream(
+            sessionId, mode, pct, count, randomizeCodes, denialCode
+        );
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_TYPE, "application/x-ndjson")
+                .body(stream);
+    }
+
+    @PostMapping("/session/{sessionId}/batch-execute")
+    public java.util.concurrent.Callable<ResponseEntity<Map<String, Object>>> batchExecuteSession(
+
+            @PathVariable String sessionId,
+            @RequestBody Map<String, Object> config) {
+
+        // Parse config on the request thread (fast, no I/O)
+        final String mode = (String) config.get("mode");
+        final int pct = parseIntParam(config.get("pct"));
+        final int count = parseIntParam(config.get("count"));
+        final boolean randomizeCodes = (boolean) config.getOrDefault("randomizeCodes", false);
+        final String denialCode = (String) config.getOrDefault("denialCode", "");
+
+        long usedMem = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+        log.info("Batch executing on session {}: mode={}, pct={}% . Memory: {}MB", sessionId, mode, pct, usedMem);
+
+        // Execute on async thread pool — frees the NIO thread immediately
+        return () -> {
+            try {
+                Map<String, Object> result = unifiedParserService.applySessionBatchAction(
+                    sessionId, mode, pct, count, randomizeCodes, denialCode
+                );
+                return ResponseEntity.ok(result);
+            } catch (Exception e) {
+                log.error("Error during session batch execute", e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", e.getMessage()));
+            }
+        };
+    }
+
+    /**
+     * ⚡ ELITE TIER: Cancel an active background indexing session.
+     */
+    @DeleteMapping("/session/{sessionId}")
+    public ResponseEntity<Void> cancelSession(@PathVariable String sessionId) {
+        unifiedParserService.stopSession(sessionId);
+        return ResponseEntity.noContent().build();
     }
 
     private int parseIntParam(Object obj) {

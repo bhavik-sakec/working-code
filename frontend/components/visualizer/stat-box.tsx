@@ -20,15 +20,19 @@ export const StatBox = ({ label, value, icon: Icon, colorClass, borderClass }: S
         <div className="absolute inset-0 opacity-[0.02] bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
         
 
-        <div className="relative z-10">
-            <div className="flex items-center gap-1.5 mb-1">
-                <div className={cn("w-0.5 h-2.5", colorClass ? colorClass.replace('text-', 'bg-') : "bg-muted-foreground/30")} />
-                <span className="text-[8px] tracking-[0.2em] uppercase text-muted-foreground font-black group-hover:text-foreground transition-colors leading-none truncate pr-2">
-                    {label}
-                </span>
+        <div className="relative z-10 flex items-center gap-3">
+            <div className={cn("shrink-0 p-1.5 rounded-lg bg-muted/20 group-hover:bg-muted/40 transition-colors", colorClass)}>
+                <Icon className="w-3.5 h-3.5" />
             </div>
-            <div className={cn("text-lg font-black tracking-tighter font-mono tabular-nums leading-none", colorClass)}>
-                {value}
+            <div>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[8px] tracking-[0.2em] uppercase text-muted-foreground font-black group-hover:text-foreground transition-colors leading-none truncate pr-2">
+                        {label}
+                    </span>
+                </div>
+                <div className={cn("text-lg font-black tracking-tighter font-mono tabular-nums leading-none", colorClass)}>
+                    {value}
+                </div>
             </div>
         </div>
 

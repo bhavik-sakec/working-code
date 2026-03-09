@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Shuffle, Zap, ChevronDown } from 'lucide-react';
+import { Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
@@ -10,19 +10,20 @@ import { ACK_DENIAL_CODES, RESP_DENIAL_CODES, SCHEMAS, RESP_STATUS, ACK_STATUS }
 interface SimulationHUDProps {
     open: boolean;
     mode: 'DY' | 'PA' | 'R';
-    schema: 'ACK' | 'RESP' | 'MRX';
+    schema: 'ACK' | 'RESP' | 'MRX' | 'INVALID';
     bulkInputMode: 'PCT' | 'CNT';
     bulkPct: string;
     bulkCount: string;
     randomizeDenyCodes: boolean;
     bulkDenialCode: string;
-    setBulkPanel: (panel: any) => void;
+    setBulkPanel: React.Dispatch<React.SetStateAction<{ open: boolean; mode: 'DY' | 'PA' | 'R' }>>;
     setBulkInputMode: (mode: 'PCT' | 'CNT') => void;
     setBulkPct: (pct: string) => void;
     setBulkCount: (count: string) => void;
     setRandomizeDenyCodes: (val: boolean) => void;
     setBulkDenialCode: (code: string) => void;
     applyBulkAction: () => void;
+    isBatchExecuting?: boolean;
 }
 
 export function SimulationHUD({
@@ -40,7 +41,8 @@ export function SimulationHUD({
     setBulkCount,
     setRandomizeDenyCodes,
     setBulkDenialCode,
-    applyBulkAction
+    applyBulkAction,
+    isBatchExecuting = false
 }: SimulationHUDProps) {
     if (!open) return null;
 
@@ -62,11 +64,11 @@ export function SimulationHUD({
                         </div>
                         <div className="flex bg-muted/30 p-0.5 border border-border/50 rounded-none h-7">
                             {schema === SCHEMAS.MRX ? (
-                                <div className="px-3 py-0.5 text-[8px] font-black uppercase tracking-widest text-muted-foreground self-center opacity-50">MRX Sim Disabled</div>
+                                <div className="px-3 py-0.5 text-[8px] font-black uppercase tracking-widest text-muted-foreground self-center opacity-50">Prepay Sim Disabled</div>
                             ) : schema === SCHEMAS.RESP ? (
                                 <>
                                     <button
-                                        onClick={() => setBulkPanel((p: any) => ({ ...p, mode: RESP_STATUS.DENIED }))}
+                                        onClick={() => setBulkPanel(p => ({ ...p, mode: RESP_STATUS.DENIED as 'DY' }))}
                                         className={cn(
                                             "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest transition-all",
                                             mode === RESP_STATUS.DENIED ? 'bg-background text-rose-500 border border-rose-500/30' : 'text-muted-foreground hover:text-foreground'
@@ -75,7 +77,7 @@ export function SimulationHUD({
                                         Deny
                                     </button>
                                     <button
-                                        onClick={() => setBulkPanel((p: any) => ({ ...p, mode: RESP_STATUS.PARTIAL }))}
+                                        onClick={() => setBulkPanel(p => ({ ...p, mode: RESP_STATUS.PARTIAL as 'PA' }))}
                                         className={cn(
                                             "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest transition-all",
                                             mode === RESP_STATUS.PARTIAL ? 'bg-background text-amber-500 border border-amber-500/30' : 'text-muted-foreground hover:text-foreground'
@@ -86,7 +88,7 @@ export function SimulationHUD({
                                 </>
                             ) : (
                                 <button
-                                    onClick={() => setBulkPanel((p: any) => ({ ...p, mode: ACK_STATUS.REJECTED }))}
+                                    onClick={() => setBulkPanel(p => ({ ...p, mode: ACK_STATUS.REJECTED as 'R' }))}
                                     className={cn(
                                         "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest transition-all",
                                         mode === ACK_STATUS.REJECTED ? 'bg-background text-emerald-500 border border-emerald-500/30' : 'text-muted-foreground hover:text-foreground'
@@ -102,18 +104,24 @@ export function SimulationHUD({
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Logic</label>
-                                <div className="flex bg-muted/30 p-0.5 border border-border/50 rounded-none">
+                                <div className="flex bg-muted/50 p-0.5 border border-border/50 rounded-md">
                                     <button
                                         onClick={() => setBulkInputMode('PCT')}
-                                        className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest transition-all ${bulkInputMode === 'PCT' ? 'bg-background text-primary border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
+                                        className={cn(
+                                            "px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all rounded-[4px]",
+                                            bulkInputMode === 'PCT' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                        )}
                                     >
-                                        %
+                                        % Percent
                                     </button>
                                     <button
                                         onClick={() => setBulkInputMode('CNT')}
-                                        className={`px-2 py-0.5 text-[8px] font-black uppercase tracking-widest transition-all ${bulkInputMode === 'CNT' ? 'bg-background text-primary border border-border/50' : 'text-muted-foreground hover:text-foreground'}`}
+                                        className={cn(
+                                            "px-2.5 py-1 text-[9px] font-black uppercase tracking-widest transition-all rounded-[4px]",
+                                            bulkInputMode === 'CNT' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                                        )}
                                     >
-                                        #
+                                        # Count
                                     </button>
                                 </div>
                             </div>
@@ -187,14 +195,16 @@ export function SimulationHUD({
                 <div className="flex gap-2 w-full md:w-auto shrink-0 self-center">
                     <Button
                         variant="outline"
-                        onClick={() => setBulkPanel((p: any) => ({ ...p, open: false }))}
+                        onClick={() => setBulkPanel(p => ({ ...p, open: false }))}
                         className="h-8 px-4 text-[9px] font-black uppercase tracking-widest rounded-none border-border/50 hover:bg-muted/50 transition-all"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={applyBulkAction}
+                        disabled={isBatchExecuting}
                         className={`h-8 px-6 text-[9px] font-black uppercase tracking-widest rounded-none shadow-lg transition-all group ${
+                            isBatchExecuting ? 'opacity-70 cursor-not-allowed' :
                             mode === RESP_STATUS.DENIED
                                 ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-900/20'
                                 : mode === ACK_STATUS.REJECTED
@@ -202,7 +212,7 @@ export function SimulationHUD({
                                 : 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20'
                         }`}
                     >
-                        Execute Batch
+                        {isBatchExecuting ? 'Executing...' : 'Execute Batch'}
                     </Button>
                 </div>
             </div>

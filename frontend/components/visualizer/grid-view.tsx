@@ -7,15 +7,21 @@ import { cn } from '@/lib/utils';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../ui/select';
 
+import { useStore } from '@/lib/store';
+import { fetchSessionRows } from '@/lib/api';
+import { HeaderVisualizer } from './header-visualizer';
+import { Pagination } from './pagination';
+
 interface GridViewProps {
     result: ParseResult;
-    schema: 'ACK' | 'RESP' | 'MRX';
+    schema: 'ACK' | 'RESP' | 'MRX' | 'INVALID';
     virtuosoRef: React.RefObject<VirtuosoHandle | null>;
     editingField: { lineIdx: number, fieldIdx: number, value: string } | null;
     setEditingField: (f: { lineIdx: number, fieldIdx: number, value: string } | null) => void;
     handleFieldUpdate: (originalLineIdx: number, fieldDef: FieldDefinition, newValue: string) => void;
     isFieldEditable?: (name: string) => boolean;
     isDropdownField?: (name: string) => boolean;
+    headerLines?: ParsedLine[];
 }
 
 // Column width overrides for specific fields
@@ -124,7 +130,7 @@ const GridRow = memo(({
                 inline: 'nearest'
             });
         }
-    }, [activeCol]);
+    }, [activeCol, activeCellRef]);
 
     const isRejected = line.fields.some(f =>
         (f.def.name === FIELD_NAMES.STATUS && f.value.trim() === ACK_STATUS.REJECTED) ||
@@ -302,30 +308,136 @@ export function GridView({
     setEditingField,
     handleFieldUpdate,
     isFieldEditable,
-    isDropdownField
+    isDropdownField,
+    headerLines
 }: GridViewProps) {
-    // Map dataRows to include originalIndex for correct state updates
-    const dataRows = useMemo(() => result.lines
-        .map((line, originalIndex) => ({ line, originalIndex }))
-        .filter(item => item.line.type === LINE_TYPES.DATA), [result.lines]);
+    const isSessionMode = useStore(s => s.isSessionMode);
+    const sessionId = useStore(s => s.sessionId) || (window as { _activeSessionId?: string })._activeSessionId;
+    const { currentPage, pageSize, setPage } = useStore();
 
+    // Map dataRows while safely handling sparse arrays (holes) in session mode
+    // Now also handles pagination by slicing the data
+    const { pageData, totalDataCount } = useMemo(() => {
+        const dataOnlyRows: { line: ParsedLine | undefined, originalIndex: number }[] = [];
+        const allLines = result.lines;
+        const totalClaims = isSessionMode ? (result.summary.totalClaims || result.summary.total || 0) : allLines.filter(l => l?.type === LINE_TYPES.DATA).length;
 
-    const [activeCell, setActiveCellState] = useState<{ row: number, col: number } | null>(() => {
-        return dataRows.length > 0 ? { row: 0, col: 0 } : null;
-    });
+        if (!isSessionMode) {
+            // STREAMING MODE: No pages. Show everything in one list.
+            const allData = allLines
+                .map((l, idx) => ({ line: l, originalIndex: idx }))
+                .filter(item => item.line?.type === LINE_TYPES.DATA);
+            return { pageData: allData, totalDataCount: allData.length };
+        }
+
+        // SESSION MODE: Use 200 row pages.
+        let skipOffset = 0;
+        const firstLine = allLines[0];
+        if (firstLine && firstLine.type === LINE_TYPES.HEADER) {
+            skipOffset = 1;
+        }
+
+        const start = (currentPage - 1) * pageSize;
+        const end = Math.min(start + pageSize, totalClaims);
+        
+        for (let i = start; i < end; i++) {
+            const absoluteFileIdx = i + skipOffset;
+            const line = allLines[absoluteFileIdx];
+            if (!line || line.type === LINE_TYPES.DATA) {
+                dataOnlyRows.push({ line, originalIndex: absoluteFileIdx });
+            }
+        }
+
+        return { pageData: dataOnlyRows, totalDataCount: totalClaims };
+    }, [result.lines, result.summary.total, result.summary.totalClaims, isSessionMode, currentPage, pageSize]);
+
+    const [activeCell, setActiveCellState] = useState<{ row: number, col: number } | null>(null);
     const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+    
+    const rowCount = pageData.length;
+
+    // Initialize active cell when data first arrives or page changes
+    useEffect(() => {
+        if (!activeCell && rowCount > 0) {
+            setActiveCellState({ row: 0, col: 0 });
+        }
+    }, [rowCount, activeCell, setActiveCellState]);
+
+
+    // Reset scroll and active cell row when page changes
+    useEffect(() => {
+        if (virtuosoRef.current) {
+            virtuosoRef.current.scrollToIndex(0);
+        }
+        setActiveCellState(prev => prev ? { ...prev, row: 0 } : null);
+    }, [currentPage, virtuosoRef]);
+
+    // Lazy loader for session mode
+    const [loadingIndices, setLoadingIndices] = useState<Set<number>>(new Set());
+    
+    const loadMore = useCallback(async (startIndex: number) => {
+        if (!isSessionMode || !sessionId || loadingIndices.has(startIndex)) return;
+        
+        setLoadingIndices(prev => new Set(prev).add(startIndex));
+        try {
+            // Fetch a chunk of rows based on pageSize or 200 (if paginated, we use 200 as requested)
+            const fetchCount = 200; 
+            const newRows = await fetchSessionRows(sessionId, startIndex, fetchCount);
+            const edits = useStore.getState().sessionEdits[sessionId] || {};
+            
+            // Merge into store and apply any pending edits
+            const currentLines = [...useStore.getState().lines];
+            newRows.forEach((r, i) => {
+                const globalIdx = startIndex + i;
+                currentLines[globalIdx] = edits[globalIdx] ? edits[globalIdx] : r;
+            });
+            useStore.getState().setResult({ lines: currentLines });
+
+        } catch (e) {
+            console.error('Lazy loading failed', e);
+        } finally {
+            setLoadingIndices(prev => {
+                const n = new Set(prev);
+                n.delete(startIndex);
+                return n;
+            });
+        }
+    }, [isSessionMode, sessionId, loadingIndices]);
+
+    // Proactively load page data when page changes
+    useEffect(() => {
+        if (isSessionMode && sessionId) {
+            const startIdx = (currentPage - 1) * pageSize;
+            
+            // Heuristic: adjust for the header at index 0
+            const firstLine = result.lines[0];
+            const fileStartIdx = (firstLine && firstLine.type === LINE_TYPES.HEADER) ? startIdx + 1 : startIdx;
+
+            const hasInitialData = result.lines[fileStartIdx] !== undefined;
+            if (!hasInitialData) {
+                // If the data we expect for this page is missing, fetch 200 rows starting from where the data should be
+                loadMore(fileStartIdx);
+            }
+        }
+    }, [currentPage, isSessionMode, sessionId, pageSize, result.lines, loadMore]);
 
     const setActiveCell = useCallback((cell: { row: number, col: number }) => {
         setActiveCellState(cell);
     }, []);
 
-    const firstDataLine = dataRows[0]?.line || result.lines.find(l => l.type === LINE_TYPES.DATA);
-    const headerFields = firstDataLine?.fields || [];
-
-    // Stable header component reference to prevent Virtuoso from re-mounting on every render
     const HeaderComponent = useMemo(() => {
-        return function GridHeader() { return <GridHeaderLine fields={headerFields} />; };
-    }, [headerFields]);
+        const firstDataLine = pageData[0]?.line || result.lines.find(l => l?.type === LINE_TYPES.DATA);
+        const headerFields = firstDataLine?.fields || [];
+        
+        return function GridHeader() { 
+            return (
+                <div className="flex flex-col">
+                    {headerLines && <HeaderVisualizer headerLines={headerLines} />}
+                    <GridHeaderLine fields={headerFields} />
+                </div>
+            );
+        };
+    }, [pageData, result.lines, headerLines]);
 
     useEffect(() => {
         if (activeCell && virtuosoRef.current) {
@@ -338,8 +450,8 @@ export function GridView({
     }, [activeCell, virtuosoRef]);
 
     // Stable refs for values used inside itemContent to avoid re-creating the callback
-    const dataRowsRef = useRef(dataRows);
-    dataRowsRef.current = dataRows;
+    const pageDataRef = useRef(pageData);
+    pageDataRef.current = pageData;
     const editingFieldRef = useRef(editingField);
     editingFieldRef.current = editingField;
     const activeCellRef = useRef(activeCell);
@@ -349,18 +461,27 @@ export function GridView({
 
     // Stable key computation — allows Virtuoso to efficiently recycle DOM nodes
     const computeItemKey = useCallback((index: number) => {
-        return dataRowsRef.current[index]?.originalIndex ?? index;
+        const item = pageDataRef.current[index];
+        return item ? `loaded_${item.originalIndex}` : `missing_${index}`;
     }, []);
 
     // Stable itemContent callback — never changes reference, reads from refs
     const itemContent = useCallback((index: number) => {
-        const item = dataRowsRef.current[index];
+        const item = pageDataRef.current[index];
         const ef = editingFieldRef.current;
         const ac = activeCellRef.current;
         const sr = selectedRowsRef.current;
+        
+        // If line is missing in session mode, show a clean blank space while loading/after end of data
+        if (!item?.line) {
+            return (
+                <div key={`missing_${index}`} className="flex h-[37px] items-center border-b border-white/5 opacity-0" />
+            );
+        }
+
         return (
             <GridRow
-                index={index}
+                index={index + (currentPage - 1) * pageSize}
                 originalIndex={item.originalIndex}
                 line={item.line}
                 schema={schema}
@@ -375,14 +496,14 @@ export function GridView({
                 isSelected={sr.has(index)}
             />
         );
-    }, [schema, setEditingField, handleFieldUpdate, isFieldEditable, isDropdownField, setActiveCell]);
+    }, [schema, setEditingField, handleFieldUpdate, isFieldEditable, isDropdownField, setActiveCell, currentPage, pageSize]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
         if (editingField) return;
         if (!activeCell) return;
 
         const { row, col } = activeCell;
-        const item = dataRows[row];
+        const item = pageData[row];
         if (!item) return;
 
         switch (e.key) {
@@ -392,7 +513,7 @@ export function GridView({
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                if (row < dataRows.length - 1) setActiveCell({ row: row + 1, col });
+                if (row < pageData.length - 1) setActiveCell({ row: row + 1, col });
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
@@ -400,10 +521,10 @@ export function GridView({
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (col < item.line.fields.length - 1) setActiveCell({ row, col: col + 1 });
+                if (item.line && col < item.line.fields.length - 1) setActiveCell({ row, col: col + 1 });
                 break;
             case 'Enter':
-                const field = item.line.fields[col];
+                const field = item.line?.fields[col];
                 if (field && (field.def.editable || isFieldEditable?.(field.def.name))) {
                     e.preventDefault();
                     setEditingField({ lineIdx: item.originalIndex, fieldIdx: col, value: field.value });
@@ -412,8 +533,20 @@ export function GridView({
             case 'Escape':
                 setSelectedRows(new Set());
                 break;
+            case 'PageDown':
+                if (isSessionMode) {
+                    e.preventDefault();
+                    setPage(currentPage + 1);
+                }
+                break;
+            case 'PageUp':
+                if (isSessionMode) {
+                    e.preventDefault();
+                    setPage(currentPage - 1);
+                }
+                break;
         }
-    }, [activeCell, dataRows, editingField, isFieldEditable, setEditingField]);
+    }, [activeCell, pageData, editingField, isFieldEditable, setEditingField, setActiveCell, currentPage, setPage, isSessionMode]);
 
     // Stable Virtuoso components object — avoids object recreation on every render
     const virtuosoComponents = useMemo(() => ({
@@ -428,18 +561,30 @@ export function GridView({
             onKeyDown={handleKeyDown}
             tabIndex={0}
         >
-            <div className="absolute inset-0">
+            <div className="absolute inset-x-0 top-0 bottom-10">
                 <Virtuoso
                     ref={virtuosoRef}
                     style={{ height: '100%' }}
-                    totalCount={dataRows.length}
-                    overscan={20}
+                    totalCount={rowCount}
+                    overscan={isSessionMode ? 10 : 5}
                     increaseViewportBy={500}
                     fixedItemHeight={37}
                     computeItemKey={computeItemKey}
-                    components={virtuosoComponents}
+                    components={{
+                        ...virtuosoComponents,
+                        Footer: () => isSessionMode ? (
+                            <div className="p-4 text-[10px] uppercase font-black tracking-widest text-muted-foreground/30 text-center border-t border-border/5 border-dashed">
+                                Session Paging Active — Index {currentPage} Size {pageSize}
+                            </div>
+                        ) : null
+                    }}
                     itemContent={itemContent}
                 />
+            </div>
+            <div className="absolute inset-x-0 bottom-0 h-10 border-t border-border bg-muted/5">
+                {isSessionMode && totalDataCount > 0 && (
+                    <Pagination totalItems={totalDataCount} />
+                )}
             </div>
         </div>
     );

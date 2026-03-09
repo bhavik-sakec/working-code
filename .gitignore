@@ -1,5 +1,6 @@
 /.metadata/
 node_modules/
 *.log
+/.env
 testing/ack2-log.txt
-.*/
+.

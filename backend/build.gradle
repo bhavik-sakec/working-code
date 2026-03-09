@@ -1,5 +1,6 @@
 plugins {
     id 'java'
+    id 'application'
     id 'org.springframework.boot' version '4.0.2'
     id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -14,6 +15,11 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs << "-Xlint:all" << "-Xlint:-processing"
+    options.deprecation = true
+}
+
 repositories {
     mavenCentral()
 }
@@ -25,6 +31,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+    implementation 'it.unimi.dsi:fastutil:8.5.15'
+    implementation 'tools.jackson.core:jackson-databind'
 }
 
 // Tests are isolated - run separately if needed
@@ -32,20 +40,30 @@ tasks.named('test') {
     enabled = false
 }
 
-// JVM configuration optimized for fast processing with efficient memory usage
-// - Xms256m: Start small (fast startup, grows as needed)
+// JVM configuration optimized for large-file streaming with minimal GC pauses.
+// - Xms512m: Start at 512m to avoid heap-grow pauses in the first 200k lines
 // - Xmx2g: Cap at 2GB (handles 1M claims after memory optimizations)
-// - G1GC: Best for large heaps with low pause times
-// - StringDeduplication: Reduces memory for repeated field values (~30-40% savings)
+// - G1GC: Best for large heaps with predictable pause times
+// - MaxGCPauseMillis=50: Tighter pause target (was 100ms) — less "stall" during streaming
+// - G1HeapRegionSize=8m: Fewer regions = less region-tracking overhead
+// - InitiatingHeapOccupancyPercent=35: Start concurrent GC earlier (wards off long GC pauses)
+// - ParallelRefProcEnabled: Process GC references in parallel for shorter pauses
+// - StringDeduplication: Eliminates duplicate String values on heap (~30-40% savings)
 bootRun {
     jvmArgs = [
-        '-Xms256m',
+        '-Xms512m',
         '-Xmx2g',
         '-XX:+UseG1GC',
-        '-XX:MaxGCPauseMillis=100',
+        '-XX:MaxGCPauseMillis=50',
+        '-XX:G1HeapRegionSize=8m',
+        '-XX:InitiatingHeapOccupancyPercent=35',
+        '-XX:+ParallelRefProcEnabled',
         '-XX:+UseStringDeduplication',
         '-XX:ParallelGCThreads=4',
         '-XX:+OptimizeStringConcat'
     ]
 }
 
+application {
+    mainClass = 'com.mrx.fileparserengine.FileParserEngineApplication'
+}
