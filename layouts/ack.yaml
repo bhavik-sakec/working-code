@@ -1,0 +1,246 @@
+name: ACK
+lineLength: 220
+header:
+  - {
+      name: "Record Type",
+      start: 1,
+      end: 1,
+      length: 1,
+      type: "Alpha",
+      expectedValue: "H",
+      description: "Valid Value: H=Header Record",
+    }
+  - {
+      name: "Sender Value",
+      start: 2,
+      end: 26,
+      length: 25,
+      type: "AlphaNumeric",
+      expectedValue: "PRIME",
+      description: "Value = 'PRIME'",
+    }
+  - {
+      name: "Receiver Value",
+      start: 27,
+      end: 51,
+      length: 25,
+      type: "AlphaNumeric",
+      expectedValue: "BCBSMN",
+      description: "Value = BCBSMN",
+    }
+  - {
+      name: "Creation Date",
+      start: 52,
+      end: 59,
+      length: 8,
+      type: "Numeric",
+      description: "YYYYMMDD",
+    }
+  - {
+      name: "Original File Name",
+      start: 60,
+      end: 106,
+      length: 47,
+      type: "AlphaNumeric",
+      description: "Original Filename",
+    }
+  - {
+      name: "Filler",
+      start: 107,
+      end: 220,
+      length: 114,
+      type: "AlphaNumeric",
+      description: "Blank Fill",
+    }
+
+data:
+  - {
+      name: "Record Type",
+      start: 1,
+      end: 1,
+      length: 1,
+      type: "Alpha",
+      expectedValue: "D",
+      description: "Valid Value: D=Data",
+    }
+  - {
+      name: "Client Claim Id",
+      start: 2,
+      end: 21,
+      length: 20,
+      type: "AlphaNumeric",
+      description: "Client claim #",
+    }
+  - {
+      name: "Claim Line #",
+      start: 22,
+      end: 26,
+      length: 5,
+      type: "Numeric",
+      description: "Client line #",
+    }
+  - {
+      name: "Member ID",
+      start: 27,
+      end: 56,
+      length: 30,
+      type: "AlphaNumeric",
+      description: "Client member ID",
+    }
+  - {
+      name: "Patient ID",
+      start: 57,
+      end: 94,
+      length: 38,
+      type: "AlphaNumeric",
+      description: "Client patient ID",
+    }
+  - {
+      name: "Client Provider ID",
+      start: 95,
+      end: 110,
+      length: 16,
+      type: "AlphaNumeric",
+      description: "Client provider ID",
+    }
+  - {
+      name: "Prov NPI",
+      start: 111,
+      end: 122,
+      length: 12,
+      type: "AlphaNumeric",
+      description: "Rendering provider NPI",
+    }
+  - {
+      name: "Prov Tax ID",
+      start: 123,
+      end: 132,
+      length: 10,
+      type: "AlphaNumeric",
+      description: "Rendering provider TIN",
+    }
+  - {
+      name: "Status",
+      start: 133,
+      end: 133,
+      length: 1,
+      type: "Alpha",
+      description: "'A'=Accepted; 'R'=Rejected",
+      editable: true,
+      uiType: "dropdown",
+    }
+  - {
+      name: "Reject ID",
+      start: 134,
+      end: 140,
+      length: 7,
+      type: "AlphaNumeric",
+      description: "Magellan Reject ID",
+      editable: true,
+      uiType: "dropdown",
+    }
+  - {
+      name: "Reject Reason",
+      start: 141,
+      end: 220,
+      length: 80,
+      type: "AlphaNumeric",
+      description: "Reject Description",
+      editable: true,
+    }
+
+trailer:
+  - {
+      name: "Record Type",
+      start: 1,
+      end: 1,
+      length: 1,
+      type: "Alpha",
+      expectedValue: "T",
+      description: "Valid Value: T=Trailer Record",
+    }
+  - {
+      name: "Value",
+      start: 2,
+      end: 8,
+      length: 7,
+      type: "Alpha",
+      expectedValue: "TRAILER",
+      description: "Value: 'TRAILER'",
+    }
+  - {
+      name: "Total Records",
+      start: 9,
+      end: 28,
+      length: 20,
+      type: "Numeric",
+      description: "Total Number of Records sent",
+    }
+  - {
+      name: "Filler",
+      start: 29,
+      end: 220,
+      length: 192,
+      type: "AlphaNumeric",
+      description: "Blank Fill",
+    }
+
+denialCodes:
+  - {
+      code: "EDI3108",
+      short: "Reject to client - Client's Claim Number Not on File",
+    }
+  - { code: "EDI3119", short: "Reject to client - Duplicate Claim # Submitted" }
+  - { code: "EDI3130", short: "Reject to client - Duplicate claim/line" }
+  - {
+      code: "EDI3188",
+      short: "Reject to client - Client's Claim Line Number Missing",
+    }
+  - {
+      code: "EDI3107",
+      short: "Reject to client - Claim's DOS Prior to Client's Contracted Start Date",
+    }
+  - {
+      code: "EDI1300",
+      short: "Reject to client - The Service From Date is Invalid",
+    }
+  - {
+      code: "EDI1310",
+      short: "Reject to client - The Service To Date is Invalid",
+    }
+  - {
+      code: "EDI1330",
+      short: "Reject to client - The Service From/To Date is after the Received Date",
+    }
+  - {
+      code: "EDI3136",
+      short: "Reject to client - Client received date missing or invalid",
+    }
+  - { code: "EDI3121", short: "Reject to client - Member ID Missing" }
+  - { code: "EDI3122", short: "Reject to client - Patient Name Missing" }
+  - { code: "EDI3123", short: "Reject to client - Patient DOB Missing" }
+  - { code: "EDI3124", short: "Reject to client - TIN Missing" }
+  - { code: "EDI3132", short: "Reject to client - Diagnosis Code Missing" }
+  - {
+      code: "EDI3109",
+      short: "Reject to client - non-covered Place of Service",
+    }
+  - { code: "EDI3126", short: "Reject to client - non-Covered Type of Bill" }
+  - { code: "EDI3110", short: "Reject to client - non-covered Procedure Code" }
+  - {
+      code: "EDI3120",
+      short: "Reject to client - Line Item Service Unit Count equals zero",
+    }
+  - {
+      code: "EDI3115",
+      short: "Reject to client - Line Item Charge Amount not received",
+    }
+  - {
+      code: "EDI3118",
+      short: "Reject to client - Allowed Amount is Greater than Billed Amt",
+    }
+  - {
+      code: "EDI3129",
+      short: "Reject to client - Line of Business missing or not contracted",
+    }
+  - { code: "EDI3133", short: "Reject to client - Client Claim Status Missing" }
