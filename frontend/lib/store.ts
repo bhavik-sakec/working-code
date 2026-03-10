@@ -107,7 +107,7 @@ export const useStore = create<State>((set, get) => ({
     lastEditedLineIdx: null,
 
     currentPage: 1,
-    pageSize: 200,
+    pageSize: 50,
 
     setPage: (currentPage) => set({ currentPage }),
     setPageSize: (pageSize) => set({ pageSize, currentPage: 1 }),

@@ -316,29 +316,31 @@ export function GridView({
     const { currentPage, pageSize, setPage } = useStore();
 
     // Map dataRows while safely handling sparse arrays (holes) in session mode
-    // Now also handles pagination by slicing the data
+    // Enforces pagination strictly for all modes (small and large files)
     const { pageData, totalDataCount } = useMemo(() => {
-        const dataOnlyRows: { line: ParsedLine | undefined, originalIndex: number }[] = [];
         const allLines = result.lines;
-        const totalClaims = isSessionMode ? (result.summary.totalClaims || result.summary.total || 0) : allLines.filter(l => l?.type === LINE_TYPES.DATA).length;
+        const totalClaims = isSessionMode 
+            ? (result.summary.totalClaims || result.summary.total || 0) 
+            : allLines.filter(l => l?.type === LINE_TYPES.DATA).length;
+
+        const start = (currentPage - 1) * pageSize;
+        const end = Math.min(start + pageSize, totalClaims);
+        const dataOnlyRows: { line: ParsedLine | undefined, originalIndex: number }[] = [];
 
         if (!isSessionMode) {
-            // STREAMING MODE: No pages. Show everything in one list.
+            // STREAMING MODE: Filter valid data lines then slice according to page
             const allData = allLines
                 .map((l, idx) => ({ line: l, originalIndex: idx }))
                 .filter(item => item.line?.type === LINE_TYPES.DATA);
-            return { pageData: allData, totalDataCount: allData.length };
+            return { pageData: allData.slice(start, end), totalDataCount: allData.length };
         }
 
-        // SESSION MODE: Use 200 row pages.
+        // SESSION MODE: Use paginated logic with direct lookup for sparse array
         let skipOffset = 0;
         const firstLine = allLines[0];
         if (firstLine && firstLine.type === LINE_TYPES.HEADER) {
             skipOffset = 1;
         }
-
-        const start = (currentPage - 1) * pageSize;
-        const end = Math.min(start + pageSize, totalClaims);
         
         for (let i = start; i < end; i++) {
             const absoluteFileIdx = i + skipOffset;
@@ -380,8 +382,8 @@ export function GridView({
         
         setLoadingIndices(prev => new Set(prev).add(startIndex));
         try {
-            // Fetch a chunk of rows based on pageSize or 200 (if paginated, we use 200 as requested)
-            const fetchCount = 200; 
+            // Fetch a chunk of rows based on pageSize
+            const fetchCount = pageSize; 
             const newRows = await fetchSessionRows(sessionId, startIndex, fetchCount);
             const edits = useStore.getState().sessionEdits[sessionId] || {};
             
@@ -415,7 +417,7 @@ export function GridView({
 
             const hasInitialData = result.lines[fileStartIdx] !== undefined;
             if (!hasInitialData) {
-                // If the data we expect for this page is missing, fetch 200 rows starting from where the data should be
+                // If the data we expect for this page is missing, fetch rows starting from where the data should be
                 loadMore(fileStartIdx);
             }
         }
@@ -534,16 +536,12 @@ export function GridView({
                 setSelectedRows(new Set());
                 break;
             case 'PageDown':
-                if (isSessionMode) {
-                    e.preventDefault();
-                    setPage(currentPage + 1);
-                }
+                e.preventDefault();
+                setPage(currentPage + 1);
                 break;
             case 'PageUp':
-                if (isSessionMode) {
-                    e.preventDefault();
-                    setPage(currentPage - 1);
-                }
+                e.preventDefault();
+                setPage(currentPage - 1);
                 break;
         }
     }, [activeCell, pageData, editingField, isFieldEditable, setEditingField, setActiveCell, currentPage, setPage, isSessionMode]);
@@ -572,17 +570,13 @@ export function GridView({
                     computeItemKey={computeItemKey}
                     components={{
                         ...virtuosoComponents,
-                        Footer: () => isSessionMode ? (
-                            <div className="p-4 text-[10px] uppercase font-black tracking-widest text-muted-foreground/30 text-center border-t border-border/5 border-dashed">
-                                Session Paging Active — Index {currentPage} Size {pageSize}
-                            </div>
-                        ) : null
+                        Footer: () => null
                     }}
                     itemContent={itemContent}
                 />
             </div>
             <div className="absolute inset-x-0 bottom-0 h-10 border-t border-border bg-muted/5">
-                {isSessionMode && totalDataCount > 0 && (
+                {totalDataCount > 0 && (
                     <Pagination totalItems={totalDataCount} />
                 )}
             </div>

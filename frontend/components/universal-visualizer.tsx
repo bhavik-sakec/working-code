@@ -35,7 +35,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
         setResult, addRows, setSchema, setFileName, setLoading, 
         setError, setActivePhase, setProcessProgress, setProcessedLines,
         recordHistory, updateField, undo, applyBulkAction, clearStore,
-        closeFile
+        closeFile, pageSize
     } = store;
 
     const result = useMemo<ParseResult>(() => ({
@@ -268,21 +268,20 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
                         // Load first batch once we have some lines, if not already loaded
                         const currentLines = useStore.getState().lines;
                         if (currentLines.length === 0 && (status.indexedLines > 0 || status.status === 'COMPLETED')) {
-                            setActivePhase('PROCESSING'); 
-                            
-                            // Load first 200 all together as requested
-                            const initialBatchSize = Math.min(200, status.indexedLines);
+                            setActivePhase('PROCESSING');
+                            // Load first batch once we have some lines, if not already loaded
+                            const initialBatchSize = Math.min(pageSize, status.indexedLines);
                             const firstBatch = await fetchSessionRows(session.sessionId, 0, initialBatchSize);
                             if (firstBatch && firstBatch.length > 0) {
                                 addRows(firstBatch);
-                                // ⚡ FAST HUD RELEASE: Hide overlay once 200 lines are available
+                                // ⚡ FAST HUD RELEASE: Hide overlay once 50 lines are available
                                 setLoading(false); 
                                 setActivePhase('IDLE');
                                 setFetchingProgress(0);
                             }
 
-                            // Secondary Hydration: Fetch up to 500 lines total in the background (silent)
-                            const targetTotal = Math.min(500, status.indexedLines);
+                            // Secondary Hydration: Fetch more lines total in the background (silent)
+                            const targetTotal = Math.min(pageSize * 5, status.indexedLines);
                             if (targetTotal > initialBatchSize) {
                                 (async () => {
                                     for (let start = initialBatchSize; start < targetTotal; start += 50) {
@@ -297,7 +296,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
 
                     // Final fetch of first batch if still empty
                     if (useStore.getState().lines.length === 0) {
-                        const firstBatch = await fetchSessionRows(session.sessionId, 0, 200);
+                        const firstBatch = await fetchSessionRows(session.sessionId, 0, pageSize);
                         addRows(firstBatch);
                     }
 
@@ -316,7 +315,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
 
         setLoading(false);
         setActivePhase('IDLE');
-    }, [isLoading, setLoading, setError, setActivePhase, setProcessProgress, addRows, setResult, setProcessedLines, closeFile]);
+    }, [isLoading, setLoading, setError, setActivePhase, setProcessProgress, addRows, setResult, setProcessedLines, closeFile, pageSize]);
 
     const handleDownload = () => {
         const tsMatch = fileName?.match(/\d{10,}/);
