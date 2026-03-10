@@ -2,9 +2,9 @@ import { create } from 'zustand';
 import { ParseResult, ParsedLine, FieldDefinition } from './types';
 import {
     cancelSession,
-    batchExecuteSession,
     batchExecuteSessionStream
 } from './api';
+import { toast } from 'sonner';
 import { normalizeSummary } from './utils';
 
 import { SCHEMAS, LINE_TYPES, FIELD_NAMES, ACK_STATUS, RESP_STATUS, ACK_DENIAL_CODES, RESP_DENIAL_CODES } from './constants';
@@ -317,7 +317,20 @@ export const useStore = create<State>((set, get) => ({
     setFileName: (name, forceSchema) => set((s) => {
         if (!name) return { fileName: null };
         
-        const exists = s.activeFiles.find(f => f.name === name);
+        // Always flush current state of the previously active file into its entry
+        const flushedFiles = s.activeFiles.map(f => 
+            f.id === s.activeFileId ? { 
+                ...f, 
+                lines: s.lines, 
+                summary: s.summary,
+                processedLines: s.processedLines,
+                schema: s.schema,
+                content: s.content,
+                currentPage: s.currentPage
+            } : f
+        );
+
+        const exists = flushedFiles.find(f => f.name === name);
         if (exists) {
             // If it exists, switch focus to it
             return { 
@@ -329,20 +342,21 @@ export const useStore = create<State>((set, get) => ({
                 processedLines: exists.processedLines,
                 content: exists.content,
                 currentPage: exists.currentPage || 1,
-                history: [] 
+                history: [],
+                activeFiles: flushedFiles
             };
         }
 
         // Use forceSchema if provided, otherwise guess from extension
         const resolvedSchema: State['schema'] = forceSchema ?? (name.toLowerCase().endsWith('.mrx') ? 'MRX' : 'INVALID');
         const isMrx = resolvedSchema === 'MRX';
-        const matrixFiles = s.activeFiles.filter(f => f.schema !== 'MRX' && f.schema !== 'INVALID');
-        const forgeFiles = s.activeFiles.filter(f => f.schema === 'MRX');
+        const matrixFiles = flushedFiles.filter(f => f.schema !== 'MRX' && f.schema !== 'INVALID');
+        const forgeFiles = flushedFiles.filter(f => f.schema === 'MRX');
 
         // Enforce specific slot limits: 2 for Data Matrix, 1 for MRX Forge
         if (isMrx && forgeFiles.length >= 1) return s;
         if (!isMrx && matrixFiles.length >= 2) return s;
-        if (s.activeFiles.length >= 3) return s;
+        if (flushedFiles.length >= 3) return s;
 
         const id = Math.random().toString(36).substring(7);
         const newFile: ActiveFileEntry = {
@@ -361,7 +375,7 @@ export const useStore = create<State>((set, get) => ({
         return {
             fileName: name,
             activeFileId: id,
-            activeFiles: [...s.activeFiles, newFile],
+            activeFiles: [...flushedFiles, newFile],
             lines: [],
             content: '',
             summary: { ...emptySummary },
@@ -660,11 +674,8 @@ export const useStore = create<State>((set, get) => ({
                     eligible: finalEligible 
                 };
             } catch (err) {
-                let message = 'Unknown error';
-                if (err instanceof Error) message = err.message;
-                if (typeof window !== 'undefined' && (window as any).toast) {
-                    (window as any).toast.error('Batch Action Error', { description: message, duration: 5000 });
-                }
+                const message = err instanceof Error ? err.message : 'Unknown error';
+                toast.error('Batch Action Error', { description: message, duration: 5000 });
                 return { applied: 0, requested: 0, eligible: 0 };
             }
         }

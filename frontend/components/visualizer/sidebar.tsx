@@ -163,7 +163,7 @@ export function VisualizerSidebar({
                             )}
                             <Upload className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
                             <div className="text-center px-4">
-                                <span className="block font-black text-[9px] tracking-widest uppercase group-hover:text-primary transition-colors mb-1">Upload ACK/RESP/MRX FILES</span>
+                                <span className="block font-black text-[9px] tracking-widest uppercase group-hover:text-primary transition-colors mb-1">Upload ACK/RESP FILES</span>
                                 <span className="text-[8px] text-muted-foreground uppercase tracking-tighter opacity-60">Initialize Workspace</span>
                             </div>
                         </div>

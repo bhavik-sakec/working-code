@@ -142,6 +142,7 @@ export function MrxConverter({ pendingFile, onPendingFileConsumed, onOpenInDataM
                         throw new Error('Invalid file format. Please upload a Prepay (.txt) file.');
                     }
                     if (chunkLines) {
+                        store.addRows(chunkLines);
                         setResult(prev => ({
                             ...prev,
                             lines: [...prev.lines, ...chunkLines]
@@ -149,6 +150,7 @@ export function MrxConverter({ pendingFile, onPendingFileConsumed, onOpenInDataM
                         setContent('STREAMED');
                     }
                     if (chunkResult?.summary) {
+                        store.setResult({ summary: chunkResult.summary, detectedSchema: SCHEMAS.MRX });
                         setResult(prev => ({
                             ...prev,
                             summary: { ...prev.summary, ...chunkResult.summary }

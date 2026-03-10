@@ -404,7 +404,7 @@ export function GridView({
                 return n;
             });
         }
-    }, [isSessionMode, sessionId, loadingIndices]);
+    }, [isSessionMode, sessionId, loadingIndices, pageSize]);
 
     // Proactively load page data when page changes
     useEffect(() => {
@@ -544,7 +544,7 @@ export function GridView({
                 setPage(currentPage - 1);
                 break;
         }
-    }, [activeCell, pageData, editingField, isFieldEditable, setEditingField, setActiveCell, currentPage, setPage, isSessionMode]);
+    }, [activeCell, pageData, editingField, isFieldEditable, setEditingField, setActiveCell, currentPage, setPage]);
 
     // Stable Virtuoso components object — avoids object recreation on every render
     const virtuosoComponents = useMemo(() => ({
