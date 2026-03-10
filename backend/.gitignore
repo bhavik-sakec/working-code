@@ -1,9 +1,12 @@
 HELP.md
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
+target/
+.mvn/
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
 
 ### STS ###
 .apt_generated

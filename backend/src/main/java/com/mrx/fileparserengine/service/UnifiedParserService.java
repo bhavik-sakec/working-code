@@ -1,6 +1,6 @@
 package com.mrx.fileparserengine.service;
 
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mrx.fileparserengine.dto.*;
 import com.mrx.fileparserengine.model.FileLayout;
 import lombok.RequiredArgsConstructor;
