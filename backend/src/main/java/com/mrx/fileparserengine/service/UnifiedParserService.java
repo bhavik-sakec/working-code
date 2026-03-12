@@ -31,13 +31,15 @@ public class UnifiedParserService {
     private final LayoutLoaderService layoutLoaderService;
     private final ObjectMapper objectMapper;
     private final SessionManager sessionManager;
-        private final Map<String, List<FieldDefinitionDTO>> fieldCache = new java.util.concurrent.ConcurrentHashMap<>();
-    
-        public SessionManager getSessionManager() {
-            return sessionManager;
-        }
+    private final Map<String, List<FieldDefinitionDTO>> fieldCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    public SessionManager getSessionManager() {
+        return sessionManager;
+    }
+
     private final java.util.regex.Pattern lineSplitPattern = java.util.regex.Pattern.compile("\\r?\\n");
-    private final ExecutorService indexingExecutor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ExecutorService indexingExecutor = Executors
+            .newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
     /**
      * ⚡ RESP MEMORY OPTIMIZATION: String interning pool for repeated field values.
@@ -1164,7 +1166,8 @@ public class UnifiedParserService {
             }
         }
 
-        int numReject = rejectCount > 0 ? Math.min(rejectCount, eligibleIndexes.size()) : (int) Math.round(eligibleIndexes.size() * (rejectPercentage / 100.0));
+        int numReject = rejectCount > 0 ? Math.min(rejectCount, eligibleIndexes.size())
+                : (int) Math.round(eligibleIndexes.size() * (rejectPercentage / 100.0));
         Set<Integer> rejectIndexes = new HashSet<>();
         if (numReject > 0) {
             Random rng = new Random();
@@ -1188,7 +1191,7 @@ public class UnifiedParserService {
         sb.append(pad(headerLine.toString(), ackLineLength, ' ', true)).append("\n");
 
         Map<String, FieldDefinitionDTO> mrxFieldMap = getMetaCachedFieldMap("MRX_DATA", mrxDataFields);
-        String[] rejectCodes = {"R", "J", "C"};
+        String[] rejectCodes = { "R", "J", "C" };
         Random rng = new Random();
 
         // Second pass: process and write each line
@@ -1273,7 +1276,8 @@ public class UnifiedParserService {
             }
         }
 
-        int numDeny = denyCount > 0 ? Math.min(denyCount, eligibleIndexes.size()) : (int) Math.round(eligibleIndexes.size() * (denyPercentage / 100.0));
+        int numDeny = denyCount > 0 ? Math.min(denyCount, eligibleIndexes.size())
+                : (int) Math.round(eligibleIndexes.size() * (denyPercentage / 100.0));
         Set<Integer> denyIndexes = new HashSet<>();
         if (numDeny > 0) {
             Random rng = new Random();
@@ -1296,7 +1300,7 @@ public class UnifiedParserService {
         sb.append(pad(headerLine.toString(), respLineLength, ' ', true)).append("\n");
 
         Map<String, FieldDefinitionDTO> mrxFieldMap = getMetaCachedFieldMap("MRX_DATA", mrxDataFields);
-        String[] denialCodes = {"DY", "PA", "RJ"};
+        String[] denialCodes = { "DY", "PA", "RJ" };
         Random rng = new Random();
 
         // Second pass: process and write each line
@@ -1328,7 +1332,8 @@ public class UnifiedParserService {
                     dataLine.append(padNum(String.valueOf(totalUnits), 9));
                     dataLine.append(padNum("0", 9));
                     if (denyIndexes.contains(currentIndex)) {
-                        String code = randomizeDenialCodes ? denialCodes[rng.nextInt(denialCodes.length)] : (denialCode != null && !denialCode.isEmpty() ? denialCode : "DY");
+                        String code = randomizeDenialCodes ? denialCodes[rng.nextInt(denialCodes.length)]
+                                : (denialCode != null && !denialCode.isEmpty() ? denialCode : "DY");
                         dataLine.append(pad(code, 2, ' ', true));
                     } else {
                         dataLine.append(pad("PD", 2, ' ', true));
@@ -1568,31 +1573,38 @@ public class UnifiedParserService {
                 .build();
     }
 
-
-    private void runBackgroundIndexing(SessionManager.FileSession session, FileLayout layout, List<FieldDefinitionDTO> dataFields) throws IOException {
+    private void runBackgroundIndexing(SessionManager.FileSession session, FileLayout layout,
+            List<FieldDefinitionDTO> dataFields) throws IOException {
         Path filePath = session.getFilePath();
         long fileSize = session.getTotalBytes();
         List<Long> offsets = session.getLineOffsets();
         long startTime = System.currentTimeMillis();
-        
+
         int statusStart = -1, statusEnd = -1, claimStart = -1, claimEnd = -1;
         for (FieldDefinitionDTO f : dataFields) {
             String name = f.getName();
             if ("MRx Claim Status".equals(name) || "Status".equals(name) || "Client Claim Line Status".equals(name)) {
-                if (statusStart == -1) { statusStart = f.getStart() - 1; statusEnd = f.getEnd(); }
+                if (statusStart == -1) {
+                    statusStart = f.getStart() - 1;
+                    statusEnd = f.getEnd();
+                }
             }
             if ("Sender Claim Number".equals(name) || "Claim Number".equals(name) || "Client Claim Id".equals(name)) {
-                if (claimStart == -1) { claimStart = f.getStart() - 1; claimEnd = f.getEnd(); }
+                if (claimStart == -1) {
+                    claimStart = f.getStart() - 1;
+                    claimEnd = f.getEnd();
+                }
             }
         }
 
         int totalLines = 0, validLines = 0, dataLines = 0;
-        int acceptedCount = 0, rejectedCount = 0, partialCount = 0; 
+        int acceptedCount = 0, rejectedCount = 0, partialCount = 0;
         Set<String> uniqueClaims = new HashSet<>(100000);
 
         // Initial offset
         synchronized (offsets) {
-            if (offsets.isEmpty()) offsets.add(0L);
+            if (offsets.isEmpty())
+                offsets.add(0L);
         }
 
         int expectedLen = layout.getLineLength();
@@ -1600,23 +1612,24 @@ public class UnifiedParserService {
         int lineLen = 0;
 
         try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(filePath.toFile(), "r");
-             FileChannel channel = raf.getChannel()) {
-            
+                FileChannel channel = raf.getChannel()) {
+
             long pos = 0;
             // Use 16MB chunks for mapping
             long mapSize = Math.min(16 * 1024 * 1024, fileSize);
-            
+
             while (pos < fileSize) {
-                if (session.isCancelled()) return;
-                
+                if (session.isCancelled())
+                    return;
+
                 long remaining = fileSize - pos;
                 long curMapSize = Math.min(mapSize, remaining);
                 MappedByteBuffer mbb = channel.map(FileChannel.MapMode.READ_ONLY, pos, curMapSize);
-                
+
                 while (mbb.hasRemaining()) {
                     byte b = mbb.get();
                     pos++;
-                    
+
                     if (b == '\n' || b == '\r') {
                         // Handle \r\n
                         if (b == '\r' && mbb.hasRemaining() && mbb.get(mbb.position()) == '\n') {
@@ -1628,21 +1641,24 @@ public class UnifiedParserService {
                             ByteBuffer temp = ByteBuffer.allocate(1);
                             if (channel.read(temp, pos) > 0) {
                                 next = temp.get(0);
-                                if (next == '\n') pos++;
+                                if (next == '\n')
+                                    pos++;
                             }
                         }
 
                         if (lineLen > 0) {
                             totalLines++;
-                            if (lineLen == expectedLen) validLines++;
-                            
+                            if (lineLen == expectedLen)
+                                validLines++;
+
                             if (lineBuf[0] == 'D' || lineBuf[0] == 'd') {
                                 dataLines++;
                                 synchronized (session.getDataLineIndexes()) {
                                     session.getDataLineIndexes().add(totalLines - 1);
                                 }
                                 if (statusStart >= 0 && statusEnd <= lineLen) {
-                                    String stat = new String(lineBuf, statusStart, statusEnd - statusStart, StandardCharsets.ISO_8859_1).trim();
+                                    String stat = new String(lineBuf, statusStart, statusEnd - statusStart,
+                                            StandardCharsets.ISO_8859_1).trim();
                                     if (stat.equals("DY") || stat.equals("R")) {
                                         rejectedCount++;
                                     } else if (stat.equals("PA")) {
@@ -1653,10 +1669,11 @@ public class UnifiedParserService {
                                 } else {
                                     acceptedCount++; // Default to accepted if status field is missing
                                 }
-                                
+
                                 // Still track unique claims if needed for future metrics
                                 if (claimStart >= 0 && claimEnd <= lineLen) {
-                                    String claim = new String(lineBuf, claimStart, claimEnd - claimStart, StandardCharsets.ISO_8859_1).trim();
+                                    String claim = new String(lineBuf, claimStart, claimEnd - claimStart,
+                                            StandardCharsets.ISO_8859_1).trim();
                                     if (!claim.isEmpty()) {
                                         uniqueClaims.add(claim);
                                     }
@@ -1664,7 +1681,7 @@ public class UnifiedParserService {
                             }
                             lineLen = 0;
                         }
-                        
+
                         // Add start of next line
                         if (pos < fileSize) {
                             synchronized (offsets) {
@@ -1672,54 +1689,59 @@ public class UnifiedParserService {
                             }
                         }
                     } else {
-                        if (lineLen < lineBuf.length) lineBuf[lineLen++] = b;
+                        if (lineLen < lineBuf.length)
+                            lineBuf[lineLen++] = b;
                     }
 
                     if (pos % 2000000 == 0) { // Update progress every 2MB
                         session.setProcessedBytes(pos);
                         session.setIndexedLines(totalLines);
-                        session.setSummary(buildCurrentSummary(totalLines, validLines, dataLines, acceptedCount, rejectedCount, partialCount));
-                        
+                        session.setSummary(buildCurrentSummary(totalLines, validLines, dataLines, acceptedCount,
+                                rejectedCount, partialCount));
+
                         if (totalLines % 100000 == 0) {
-                             log.info("Indexing Session {}: Lines: {} | Progress: {}%", 
-                                session.getId(), totalLines, String.format("%.1f", (double)pos/fileSize * 100));
+                            log.info("Indexing Session {}: Lines: {} | Progress: {}%",
+                                    session.getId(), totalLines, String.format("%.1f", (double) pos / fileSize * 100));
                         }
                     }
                 }
-                // Unmap mbb? Java handles it via GC, but mapping smaller segments prevents huge memory pressure
+                // Unmap mbb? Java handles it via GC, but mapping smaller segments prevents huge
+                // memory pressure
             }
         }
 
         session.setProcessedBytes(fileSize);
         session.setIndexedLines(totalLines);
-        session.setSummary(buildCurrentSummary(totalLines, validLines, dataLines, acceptedCount, rejectedCount, partialCount));
+        session.setSummary(
+                buildCurrentSummary(totalLines, validLines, dataLines, acceptedCount, rejectedCount, partialCount));
         session.setStatus("COMPLETED");
         session.setCompleted(true);
-        
+
         long usedMemFinal = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
-        log.info("Indexing Complete for Session {}: Total Lines: {} | Data Lines: {} | Time: {}ms | Memory: {}MB", 
+        log.info("Indexing Complete for Session {}: Total Lines: {} | Data Lines: {} | Time: {}ms | Memory: {}MB",
                 session.getId(), totalLines, dataLines, (System.currentTimeMillis() - startTime), usedMemFinal);
     }
 
-    public StreamingResponseBody applySessionBatchActionStream(String sessionId, String mode, int pct, int count, 
-                                                       boolean randomizeCodes, String denialCode) {
+    public StreamingResponseBody applySessionBatchActionStream(String sessionId, String mode, int pct, int count,
+            boolean randomizeCodes, String denialCode) {
         SessionManager.FileSession session = sessionManager.getSession(sessionId);
-        if (session == null) throw new RuntimeException("Session not found: " + sessionId);
-        
+        if (session == null)
+            throw new RuntimeException("Session not found: " + sessionId);
+
         Path filePath = session.getFilePath();
         String schema = session.getSchema();
         List<Long> offsets = session.getLineOffsets();
-        
+
         List<Integer> eligibleIdxs = session.getDataLineIndexes();
         if (eligibleIdxs == null || eligibleIdxs.isEmpty()) {
             return os -> writeNdjson(os, Map.of("type", "complete", "applied", 0, "summary", session.getSummary()));
         }
-        
+
         List<Integer> shuffledIdxs = new ArrayList<>(eligibleIdxs);
         int eligible = shuffledIdxs.size();
-        int requested = (count > 0) ? count : (int)Math.max(1, Math.round((double)pct / 100 * eligible));
+        int requested = (count > 0) ? count : (int) Math.max(1, Math.round((double) pct / 100 * eligible));
         int appliedQty = Math.min(requested, eligible);
-        
+
         if (appliedQty == 0) {
             return os -> writeNdjson(os, Map.of("type", "complete", "applied", 0, "summary", session.getSummary()));
         }
@@ -1730,83 +1752,106 @@ public class UnifiedParserService {
 
         return outputStream -> {
             try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw");
-                 BufferedOutputStream bos = new BufferedOutputStream(outputStream)) {
-                
+                    BufferedOutputStream bos = new BufferedOutputStream(outputStream)) {
+
                 Random batchRng = new Random();
                 int expectedLineLen = session.getLayout().getLineLength();
                 byte[] readBuf = new byte[expectedLineLen + 16];
-                
+
                 int deltaAcc = 0, deltaRej = 0, deltaPart = 0;
                 int processed = 0;
 
-                List<FieldDefinitionDTO> headerFields = getCachedFields(schema + "_HEADER", session.getLayout().getHeader());
+                List<FieldDefinitionDTO> headerFields = getCachedFields(schema + "_HEADER",
+                        session.getLayout().getHeader());
                 List<FieldDefinitionDTO> dataFields = getCachedFields(schema + "_DATA", session.getLayout().getData());
-                List<FieldDefinitionDTO> trailerFields = getCachedFields(schema + "_TRAILER", session.getLayout().getTrailer());
+                List<FieldDefinitionDTO> trailerFields = getCachedFields(schema + "_TRAILER",
+                        session.getLayout().getTrailer());
 
                 for (int idx : targetIdxs) {
                     long offset = offsets.get(idx);
                     raf.seek(offset);
                     int bytesRead = raf.read(readBuf);
-                    if (bytesRead <= 0) continue;
-                    
+                    if (bytesRead <= 0)
+                        continue;
+
                     int lineEnd = 0;
-                    while (lineEnd < bytesRead && readBuf[lineEnd] != '\n' && readBuf[lineEnd] != '\r') lineEnd++;
-                    
+                    while (lineEnd < bytesRead && readBuf[lineEnd] != '\n' && readBuf[lineEnd] != '\r')
+                        lineEnd++;
+
                     String line = new String(readBuf, 0, lineEnd, java.nio.charset.StandardCharsets.ISO_8859_1);
-                    if (line.isEmpty()) continue;
-                    
+                    if (line.isEmpty())
+                        continue;
+
                     String oldStatus = getStatusFromLine(line, schema);
-                    String updatedLine = applyOverlayToLine(line, session.getLayout(), mode, randomizeCodes, denialCode, batchRng);
-                    
+                    String updatedLine = applyOverlayToLine(line, session.getLayout(), mode, randomizeCodes, denialCode,
+                            batchRng);
+
                     if (updatedLine.length() == line.length()) {
                         String newStatus = getStatusFromLine(updatedLine, schema);
-                        
+
                         // Delta logic
                         if (schema.equals("ACK")) {
-                            if ("R".equals(oldStatus)) deltaRej--; else deltaAcc--;
-                            if ("R".equals(newStatus)) deltaRej++; else deltaAcc++;
+                            if ("R".equals(oldStatus))
+                                deltaRej--;
+                            else
+                                deltaAcc--;
+                            if ("R".equals(newStatus))
+                                deltaRej++;
+                            else
+                                deltaAcc++;
                         } else {
-                            if ("DY".equals(oldStatus)) deltaRej--; else if ("PA".equals(oldStatus)) deltaPart--; else deltaAcc--;
-                            if ("DY".equals(newStatus)) deltaRej++; else if ("PA".equals(newStatus)) deltaPart++; else deltaAcc++;
+                            if ("DY".equals(oldStatus))
+                                deltaRej--;
+                            else if ("PA".equals(oldStatus))
+                                deltaPart--;
+                            else
+                                deltaAcc--;
+                            if ("DY".equals(newStatus))
+                                deltaRej++;
+                            else if ("PA".equals(newStatus))
+                                deltaPart++;
+                            else
+                                deltaAcc++;
                         }
 
                         raf.seek(offset);
                         raf.write(updatedLine.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
-                        
+
                         // Stream the updated row to frontend
-                        ParsedLineDTO parsed = parseSingleLine(updatedLine, headerFields, dataFields, trailerFields, expectedLineLen, schema);
+                        ParsedLineDTO parsed = parseSingleLine(updatedLine, headerFields, dataFields, trailerFields,
+                                expectedLineLen, schema);
                         parsed.setLineNumber(idx + 1);
-                        
+
                         Map<String, Object> updatePacket = new HashMap<>();
                         updatePacket.put("type", "row_update");
                         updatePacket.put("index", idx);
                         updatePacket.put("row", parsed);
                         writeNdjson(bos, updatePacket);
-                        
+
                         processed++;
-                        if (processed % 50 == 0) bos.flush(); // Periodic flush for smoothness
+                        if (processed % 50 == 0)
+                            bos.flush(); // Periodic flush for smoothness
                     }
                 }
 
                 // Final summary
                 SummaryDTO s = session.getSummary();
                 SummaryDTO newSummary = SummaryDTO.builder()
-                    .total(s.getTotal())
-                    .valid(s.getValid())
-                    .invalid(s.getInvalid())
-                    .totalClaims(s.getTotalClaims())
-                    .accepted(Math.max(0, s.getAccepted() + deltaAcc))
-                    .rejected(Math.max(0, s.getRejected() + deltaRej))
-                    .partial(Math.max(0, s.getPartial() + deltaPart))
-                    .build();
+                        .total(s.getTotal())
+                        .valid(s.getValid())
+                        .invalid(s.getInvalid())
+                        .totalClaims(s.getTotalClaims())
+                        .accepted(Math.max(0, s.getAccepted() + deltaAcc))
+                        .rejected(Math.max(0, s.getRejected() + deltaRej))
+                        .partial(Math.max(0, s.getPartial() + deltaPart))
+                        .build();
                 session.setSummary(newSummary);
 
                 writeNdjson(bos, Map.of(
-                    "type", "complete",
-                    "applied", processed,
-                    "eligible", eligible,
-                    "summary", newSummary
-                ));
+                        "type", "complete",
+                        "applied", processed,
+                        "eligible", eligible,
+                        "summary", newSummary));
                 bos.flush();
             } catch (Exception e) {
                 log.error("Error in streaming batch execution", e);
@@ -1814,55 +1859,58 @@ public class UnifiedParserService {
         };
     }
 
-    public Map<String, Object> applySessionBatchAction(String sessionId, String mode, int pct, int count, 
-                                                       boolean randomizeCodes, String denialCode) {
+    public Map<String, Object> applySessionBatchAction(String sessionId, String mode, int pct, int count,
+            boolean randomizeCodes, String denialCode) {
 
         SessionManager.FileSession session = sessionManager.getSession(sessionId);
-        if (session == null) throw new RuntimeException("Session not found: " + sessionId);
-        
+        if (session == null)
+            throw new RuntimeException("Session not found: " + sessionId);
+
         Path filePath = session.getFilePath();
         String schema = session.getSchema();
         List<Long> offsets = session.getLineOffsets();
-        
+
         List<Integer> eligibleIdxs = session.getDataLineIndexes();
         if (eligibleIdxs == null || eligibleIdxs.isEmpty()) {
             return Map.of("applied", 0, "eligible", 0, "summary", session.getSummary());
         }
-        
+
         // Use a copy for shuffling
         List<Integer> shuffledIdxs = new ArrayList<>(eligibleIdxs);
 
         int eligible = shuffledIdxs.size();
-        if (eligible == 0) return Map.of("applied", 0, "eligible", 0, "summary", session.getSummary());
+        if (eligible == 0)
+            return Map.of("applied", 0, "eligible", 0, "summary", session.getSummary());
 
-        int requested = (count > 0) ? count : (int)Math.max(1, Math.round((double)pct / 100 * eligible));
+        int requested = (count > 0) ? count : (int) Math.max(1, Math.round((double) pct / 100 * eligible));
         int applied = Math.min(requested, eligible);
-        
+
         if (applied > 0) {
             Collections.shuffle(shuffledIdxs);
             List<Integer> targetIdxs = new ArrayList<>(shuffledIdxs.subList(0, applied));
-            
+
             // ⚡ Sort target indexes for sequential disk access — avoids random seeks
             targetIdxs.sort(Integer::compareTo);
-            
+
             // ⚡ Single shared Random instance for the entire batch
             Random batchRng = new Random();
-            
+
             // ⚡ Pre-allocate read buffer sized for expected line length + newline headroom
             int expectedLineLen = session.getLayout().getLineLength();
             byte[] readBuf = new byte[expectedLineLen + 16]; // extra headroom for \r\n
-            
+
             // Perform in-place updates with buffered reads
             int deltaAcc = 0, deltaRej = 0, deltaPart = 0;
             try (RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "rw")) {
                 for (int idx : targetIdxs) {
                     long offset = offsets.get(idx);
                     raf.seek(offset);
-                    
+
                     // ⚡ Read entire line in one I/O operation instead of byte-by-byte readLine()
                     int bytesRead = raf.read(readBuf);
-                    if (bytesRead <= 0) continue;
-                    
+                    if (bytesRead <= 0)
+                        continue;
+
                     // Extract clean line (strip \r and \n from end)
                     int lineEnd = bytesRead;
                     for (int i = 0; i < bytesRead; i++) {
@@ -1872,26 +1920,44 @@ public class UnifiedParserService {
                         }
                     }
                     String line = new String(readBuf, 0, lineEnd, java.nio.charset.StandardCharsets.ISO_8859_1);
-                    if (line.isEmpty()) continue;
-                    
+                    if (line.isEmpty())
+                        continue;
+
                     String oldStatus = getStatusFromLine(line, schema);
-                    String updatedLine = applyOverlayToLine(line, session.getLayout(), mode, randomizeCodes, denialCode, batchRng);
-                    
+                    String updatedLine = applyOverlayToLine(line, session.getLayout(), mode, randomizeCodes, denialCode,
+                            batchRng);
+
                     if (updatedLine.length() == line.length()) {
                         String newStatus = getStatusFromLine(updatedLine, schema);
-                        
+
                         // Decrement old counts
                         if (schema.equals("ACK")) {
-                            if ("R".equals(oldStatus)) deltaRej--; else deltaAcc--;
+                            if ("R".equals(oldStatus))
+                                deltaRej--;
+                            else
+                                deltaAcc--;
                         } else {
-                            if ("DY".equals(oldStatus)) deltaRej--; else if ("PA".equals(oldStatus)) deltaPart--; else deltaAcc--;
+                            if ("DY".equals(oldStatus))
+                                deltaRej--;
+                            else if ("PA".equals(oldStatus))
+                                deltaPart--;
+                            else
+                                deltaAcc--;
                         }
-                        
+
                         // Increment new counts
                         if (schema.equals("ACK")) {
-                            if ("R".equals(newStatus)) deltaRej++; else deltaAcc++;
+                            if ("R".equals(newStatus))
+                                deltaRej++;
+                            else
+                                deltaAcc++;
                         } else {
-                            if ("DY".equals(newStatus)) deltaRej++; else if ("PA".equals(newStatus)) deltaPart++; else deltaAcc++;
+                            if ("DY".equals(newStatus))
+                                deltaRej++;
+                            else if ("PA".equals(newStatus))
+                                deltaPart++;
+                            else
+                                deltaAcc++;
                         }
 
                         raf.seek(offset);
@@ -1906,27 +1972,31 @@ public class UnifiedParserService {
             // Update session summary directly
             SummaryDTO s = session.getSummary();
             SummaryDTO newSummary = SummaryDTO.builder()
-                .total(s.getTotal())
-                .valid(s.getValid())
-                .invalid(s.getInvalid())
-                .totalClaims(s.getTotalClaims())
-                .accepted(Math.max(0, s.getAccepted() + deltaAcc))
-                .rejected(Math.max(0, s.getRejected() + deltaRej))
-                .partial(Math.max(0, s.getPartial() + deltaPart))
-                .build();
+                    .total(s.getTotal())
+                    .valid(s.getValid())
+                    .invalid(s.getInvalid())
+                    .totalClaims(s.getTotalClaims())
+                    .accepted(Math.max(0, s.getAccepted() + deltaAcc))
+                    .rejected(Math.max(0, s.getRejected() + deltaRej))
+                    .partial(Math.max(0, s.getPartial() + deltaPart))
+                    .build();
             session.setSummary(newSummary);
         }
 
         long usedMem = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
-        log.info("Batch complete on session {}: applied={}/{} mode={} Memory: {}MB", sessionId, applied, eligible, mode, usedMem);
+        log.info("Batch complete on session {}: applied={}/{} mode={} Memory: {}MB", sessionId, applied, eligible, mode,
+                usedMem);
         return Map.of("applied", applied, "eligible", eligible, "summary", session.getSummary());
     }
 
     private String getStatusFromLine(String line, String schema) {
         try {
-            if ("ACK".equals(schema)) return line.substring(132, 133);
-            if ("RESP".equals(schema)) return line.substring(157, 159).trim();
-        } catch (Exception e) {}
+            if ("ACK".equals(schema))
+                return line.substring(132, 133);
+            if ("RESP".equals(schema))
+                return line.substring(157, 159).trim();
+        } catch (Exception e) {
+        }
         return "";
     }
 
@@ -1941,19 +2011,23 @@ public class UnifiedParserService {
      * ⚡ Core overlay logic — accepts a shared Random instance.
      * The batch path passes a single Random to avoid creating one per line.
      */
-    private String applyOverlayToLine(String line, FileLayout layout, String mode, boolean randomize, String code, Random rnd) {
+    private String applyOverlayToLine(String line, FileLayout layout, String mode, boolean randomize, String code,
+            Random rnd) {
         StringBuilder sb = new StringBuilder(line);
         String schema = layout.getName();
         List<Map<String, String>> codes = layout.getDenialCodes();
-        
+
         if ("ACK".equals(schema)) {
-            // ACK: Status at 133 (1 char: A/R), RejectID at 134 (7), RejectReason at 141 (80)
+            // ACK: Status at 133 (1 char: A/R), RejectID at 134 (7), RejectReason at 141
+            // (80)
             if ("R".equals(mode)) {
-                String rc = randomize && codes != null && !codes.isEmpty() ? codes.get(rnd.nextInt(codes.size())).get("code") : code;
+                String rc = randomize && codes != null && !codes.isEmpty()
+                        ? codes.get(rnd.nextInt(codes.size())).get("code")
+                        : code;
                 String desc = (codes != null) ? codes.stream()
-                    .filter(c -> rc.equals(c.get("code"))).findFirst()
-                    .map(c -> c.get("short")).orElse("REJECTED") : "REJECTED";
-                
+                        .filter(c -> rc.equals(c.get("code"))).findFirst()
+                        .map(c -> c.get("short")).orElse("REJECTED") : "REJECTED";
+
                 overlay(sb, 133, "R"); // Status
                 overlay(sb, 134, pad(rc, 7, ' ', true)); // Reject ID
                 overlay(sb, 141, pad(desc, 80, ' ', true)); // Reject Reason
@@ -1963,16 +2037,28 @@ public class UnifiedParserService {
                 overlay(sb, 141, pad("ACCEPTED", 80, ' ', true));
             }
         } else if ("RESP".equals(schema)) {
-            // RESP: Approved Units 140-148 (9), Denied Units 149-157 (9), Status 158-159 (2: PD/DY/PA), Denial Code 160-169 (10)
+            // RESP: Approved Units 140-148 (9), Denied Units 149-157 (9), Status 158-159
+            // (2: PD/DY/PA), Denial Code 160-169 (10)
             // substring indices: (pos-1) to (pos-1+len)
             String currentApprStr = line.substring(139, 148).trim();
             String currentDenyStr = line.substring(148, 157).trim();
-            int appr = 0; try { appr = Integer.parseInt(currentApprStr); } catch(Exception e) {}
-            int deny = 0; try { deny = Integer.parseInt(currentDenyStr); } catch(Exception e) {}
+            int appr = 0;
+            try {
+                appr = Integer.parseInt(currentApprStr);
+            } catch (Exception e) {
+            }
+            int deny = 0;
+            try {
+                deny = Integer.parseInt(currentDenyStr);
+            } catch (Exception e) {
+            }
             int total = appr + deny;
-            if (total == 0) total = 1;
+            if (total == 0)
+                total = 1;
 
-            String targetCode = randomize && codes != null && !codes.isEmpty() ? codes.get(rnd.nextInt(codes.size())).get("code") : code;
+            String targetCode = randomize && codes != null && !codes.isEmpty()
+                    ? codes.get(rnd.nextInt(codes.size())).get("code")
+                    : code;
 
             if ("DY".equals(mode)) {
                 overlay(sb, 158, "DY");
@@ -1993,7 +2079,7 @@ public class UnifiedParserService {
                 overlay(sb, 160, pad("", 10, ' ', true));
             }
         }
-        
+
         return sb.toString();
     }
 
@@ -2007,14 +2093,14 @@ public class UnifiedParserService {
 
     private SummaryDTO buildCurrentSummary(int total, int valid, int data, int acc, int rej, int part) {
         return SummaryDTO.builder()
-            .total(total)
-            .valid(valid)
-            .invalid(total - valid)
-            .totalClaims(data)
-            .accepted(acc)
-            .rejected(rej)
-            .partial(part)
-            .build();
+                .total(total)
+                .valid(valid)
+                .invalid(total - valid)
+                .totalClaims(data)
+                .accepted(acc)
+                .rejected(rej)
+                .partial(part)
+                .build();
     }
 
     public Path getSessionFile(String sessionId) {
@@ -2027,7 +2113,8 @@ public class UnifiedParserService {
 
     public Map<String, Object> getSessionStatus(String sessionId) {
         SessionManager.FileSession session = sessionManager.getSession(sessionId);
-        if (session == null) return Map.of("status", "NOT_FOUND");
+        if (session == null)
+            return Map.of("status", "NOT_FOUND");
 
         Map<String, Object> status = new HashMap<>();
         status.put("sessionId", session.getId());
@@ -2037,12 +2124,12 @@ public class UnifiedParserService {
         status.put("indexedLines", session.getIndexedLines());
         status.put("isCompleted", session.isCompleted());
         status.put("summary", session.getSummary());
-        
-        double progress = session.getTotalBytes() > 0 
-            ? (double) session.getProcessedBytes() / session.getTotalBytes() * 100 
-            : 0;
+
+        double progress = session.getTotalBytes() > 0
+                ? (double) session.getProcessedBytes() / session.getTotalBytes() * 100
+                : 0;
         status.put("progress", Math.min(100, progress));
-        
+
         return status;
     }
 
@@ -2051,7 +2138,8 @@ public class UnifiedParserService {
         if (session != null) {
             session.setCancelled(true);
             session.setStatus("CANCELLED");
-            // If it was already completed, we just leave it, but this flag stops ongoing indexing
+            // If it was already completed, we just leave it, but this flag stops ongoing
+            // indexing
             log.info("Request to stop session: {}", sessionId);
         }
     }

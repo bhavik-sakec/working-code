@@ -62,6 +62,8 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
     const [editingField, setEditingField] = useState<{ lineIdx: number, fieldIdx: number, value: string } | null>(null);
     const [fetchingProgress, setFetchingProgress] = useState(0);
 
+    const isMatrixActive = lines.length > 0 && schema !== 'MRX' && schema !== 'INVALID';
+
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -437,14 +439,14 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
                 <header className="h-[54px] border-b border-border flex bg-background shrink-0 divide-x divide-border overflow-hidden relative">
                     <div className="flex-1 flex relative z-10">
                         {/* Records = Total Physical Lines | Claims = Valid Data Lines */}
-                        <StatBox label="Records" value={(summary.total || 0).toLocaleString()} icon={Activity} />
-                        <StatBox label="Claims" value={(summary.totalClaims || 0).toLocaleString()} icon={FileText} colorClass="text-primary" />
-                        <StatBox label="Accepted" value={(summary.accepted || 0).toLocaleString()} icon={Check} colorClass="text-emerald-500" borderClass="border-emerald-500/20" />
+                        <StatBox label="Records" value={(isMatrixActive ? summary.total || 0 : 0).toLocaleString()} icon={Activity} />
+                        <StatBox label="Claims" value={(isMatrixActive ? summary.totalClaims || 0 : 0).toLocaleString()} icon={FileText} colorClass="text-primary" />
+                        <StatBox label="Accepted" value={(isMatrixActive ? summary.accepted || 0 : 0).toLocaleString()} icon={Check} colorClass="text-emerald-500" borderClass="border-emerald-500/20" />
                         {schema === SCHEMAS.RESP && (
-                            <StatBox label="Partial" value={(summary.partial || 0).toLocaleString()} icon={Shuffle} colorClass="text-amber-500" borderClass="border-amber-500/20" />
+                            <StatBox label="Partial" value={(isMatrixActive ? summary.partial || 0 : 0).toLocaleString()} icon={Shuffle} colorClass="text-amber-500" borderClass="border-amber-500/20" />
                         )}
-                        <StatBox label="Rejected" value={(summary.rejected || 0).toLocaleString()} icon={AlertTriangle} colorClass={(summary.rejected || 0) > 0 ? "text-rose-500" : "text-muted-foreground"} borderClass={(summary.rejected || 0) > 0 ? "border-rose-500/20 bg-rose-500/5" : ""} />
-                        <StatBox label="Issues" value={(summary.invalid || 0).toLocaleString()} icon={ShieldAlert} colorClass={(summary.invalid || 0) > 0 ? "text-rose-500" : "text-muted-foreground"} borderClass={(summary.invalid || 0) > 0 ? "border-rose-500/20 bg-rose-500/5" : ""} />
+                        <StatBox label="Rejected" value={(isMatrixActive ? summary.rejected || 0 : 0).toLocaleString()} icon={AlertTriangle} colorClass={(isMatrixActive && (summary.rejected || 0) > 0) ? "text-rose-500" : "text-muted-foreground"} borderClass={(isMatrixActive && (summary.rejected || 0) > 0) ? "border-rose-500/20 bg-rose-500/5" : ""} />
+                        <StatBox label="Issues" value={(isMatrixActive ? summary.invalid || 0 : 0).toLocaleString()} icon={ShieldAlert} colorClass={(isMatrixActive && (summary.invalid || 0) > 0) ? "text-rose-500" : "text-muted-foreground"} borderClass={(isMatrixActive && (summary.invalid || 0) > 0) ? "border-rose-500/20 bg-rose-500/5" : ""} />
                     </div>
 
 
@@ -482,7 +484,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
                             variant="default" 
                             className="h-8 gap-2 px-4 rounded-none text-[10px] font-black uppercase tracking-widest bg-primary text-primary-foreground group shrink-0" 
                             onClick={handleDownload} 
-                            disabled={lines.length === 0}
+                            disabled={!isMatrixActive}
                         >
                             <Download className="w-3.5 h-3.5 group-hover:-translate-y-0.5 transition-transform" /> 
                             Export
@@ -503,7 +505,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
                     <div className="flex-1 w-full bg-background overflow-hidden relative flex flex-col">
 
 
-                        {lines.length === 0 ? (
+                        {!isMatrixActive ? (
                             <div className="h-full flex flex-col items-center justify-center w-full p-8">
                                 <div className="text-center space-y-4 max-w-md">
                                     <div className="w-16 h-16 bg-muted/50 rounded-2xl flex items-center justify-center mx-auto border border-dashed border-border">
@@ -533,7 +535,7 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
 
                     <footer className="h-10 border-t border-border px-8 flex items-center justify-between bg-background shrink-0 overflow-hidden">
                         <div className="flex-1 flex items-center gap-6 overflow-x-auto no-scrollbar scroll-smooth mr-4">
-                            {trailerLines.length > 0 ? (
+                            {trailerLines.length > 0 && isMatrixActive ? (
                                 trailerLines[0].fields.map((field, i) => (
                                     <div key={i} className="flex items-center gap-2 shrink-0">
                                         <span className="text-[8px] font-black text-muted-foreground/40 uppercase tracking-tighter">
@@ -552,9 +554,9 @@ export function UniversalVisualizer({ pendingContent, onPendingContentConsumed }
                                 ))
                             ) : (
                                 <div className="flex items-center gap-4 text-[9px] uppercase tracking-widest text-muted-foreground">
-                                    <span>Records: {summary.total.toLocaleString()}</span>
+                                    <span>Records: {isMatrixActive ? summary.total.toLocaleString() : 0}</span>
                                     <span className="w-1 h-1 bg-border rounded-full" />
-                                    <span>Claims: {summary.totalClaims.toLocaleString()}</span>
+                                    <span>Claims: {isMatrixActive ? summary.totalClaims.toLocaleString() : 0}</span>
                                     <span className="w-1 h-1 bg-border rounded-full" />
                                     <span className="text-primary/60 font-black italic">DISCOVERED_VIA_TRAILER</span>
                                 </div>

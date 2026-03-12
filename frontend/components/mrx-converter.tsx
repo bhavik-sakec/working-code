@@ -393,6 +393,9 @@ export function MrxConverter({ pendingFile, onPendingFileConsumed, onOpenInDataM
                                     setFileName(null);
                                     setShowAllErrors(false);
                                     setResult({ lines: [], summary: { total: 0, totalClaims: 0, valid: 0, invalid: 0, accepted: 0, rejected: 0, partial: 0 } });
+                                    const storeState = useStore.getState();
+                                    const mrxFiles = storeState.activeFiles.filter(f => f.schema === 'MRX');
+                                    mrxFiles.forEach(f => storeState.closeFile(f.id));
                                 }}
                                 aria-label="Clear loaded file"
                                 className="w-7 h-7 rounded-lg bg-muted/10 border border-border/40 flex items-center justify-center hover:bg-rose-500/15 hover:border-rose-500/30 hover:text-rose-400 transition-all shrink-0 text-muted-foreground"
